@@ -1,138 +1,21 @@
-    /// <summary>
-    /// Генерирует статистику по участкам - аналог Python section-wise stats
-    /// </summary>
-    private string GenerateSectionStatistics()
-    {
-        var stats = new StringBuilder();
-        
-        stats.AppendLine("СТАТИСТИКА ПО УЧАСТКАМ");
-        stats.AppendLine("=".PadRight(50, '='));
-        stats.AppendLine();
-        
-        // Группируем маршруты по участкам
-        var sectionGroups = _routes
-            .SelectMany(r => r.SectionNames.Select(sn => new { Route = r, SectionName = sn }))
-            .GroupBy(x => x.SectionName)
-            .OrderBy(g => g.Key);
-        
-        foreach (var sectionGroup in sectionGroups)
-        {
-            var sectionRoutes = sectionGroup.Select(x => x.Route).ToList();
-            
-            stats.AppendLine($"УЧАСТОК: {sectionGroup.Key}");
-            stats.AppendLine("-".PadRight(30, '-'));
-            stats.AppendLine($"Маршрутов: {sectionRoutes.Count}");
-            
-            if (sectionRoutes.Any(r => r.MechanicalWork > 0))
-            {
-                var avgMechWork = sectionRoutes.Where(r => r.MechanicalWork > 0).Average(r => r.MechanicalWork);
-                var avgElecCons = sectionRoutes.Where(r => r.ElectricConsumption > 0).Average(r => r.ElectricConsumption);
-                var avgDeviation = sectionRoutes.Where(r => r.DeviationPercent != 0).Average(r => r.DeviationPercent);
-                
-                stats.AppendLine($"Средняя мех. работа: {avgMechWork:F0} кВт⋅час");
-                stats.AppendLine($"Средний расход: {avgElecCons:F0} кВт⋅час");
-                stats.AppendLine($"Среднее отклонение: {avgDeviation:+F1}%");
-                
-                // Распределение по статусам для участка
-                var economyCount = sectionRoutes.Count(r => r.DeviationPercent < -5);
-                var normalCount = sectionRoutes.Count(r => Math.Abs(r.DeviationPercent) <= 5);
-                var overrunCount = sectionRoutes.Count(r => r.DeviationPercent > 5);
-                
-                stats.AppendLine("Распределение отклонений:");
-                if (economyCount > 0) stats.AppendLine($"  Экономия: {economyCount} ({economyCount / (double)sectionRoutes.Count * 100:F1}%)");
-                if (normalCount > 0) stats.AppendLine($"  В норме: {normalCount} ({normalCount / (double)sectionRoutes.Count * 100:F1}%)");
-                if (overrunCount > 0) stats.AppendLine($"  Перерасход: {overrunCount} ({overrunCount / (double)sectionRoutes.Count * 100:F1}%)");
-            }
-            
-            stats.AppendLine();
-        }
-        
-        return stats.ToString();
-    }
-
-    /// <summary>
-    /// Генерирует статистику по локомотивам - аналог Python locomotive-wise stats
-    /// </summary>
-    private string GenerateLocomotiveStatistics()
-    {
-        var stats = new StringBuilder();
-        
-        stats.AppendLine("СТАТИСТИКА ПО ЛОКОМОТИВАМ");
-        stats.AppendLine("=".PadRight(50, '='));
-        stats.AppendLine();
-        
-        // Статистика по сериям локомотивов
-        var seriesGroups = _routes
-            .Where(r => !string.IsNullOrEmpty(r.LocomotiveSeries))
-            .GroupBy(r => r.LocomotiveSeries)
-            .OrderByDescending(g => g.Count())
-            .Take(20); // Топ-20 серий
-        
-        stats.AppendLine("ТОП-20 СЕРИЙ ПО КОЛИЧЕСТВУ ПОЕЗДОК:");
-        stats.AppendLine("-".PadRight(40, '-'));
-        
-        foreach (var seriesGroup in seriesGroups)
-        {
-            var seriesRoutes = seriesGroup.ToList();
-            
-            stats.AppendLine($"СЕРИЯ {seriesGroup.Key}:");
-            stats.AppendLine($"  Поездок: {seriesRoutes.Count}");
-            stats.AppendLine($"  Уникальных локомотивов: {seriesRoutes.Select(r => r.LocomotiveNumber).Distinct().Count()}");
-            
-            if (seriesRoutes.Any(r => r.DeviationPercent != 0))
-            {
-                var deviations = seriesRoutes.Where(r => r.DeviationPercent != 0).Select(r => r.DeviationPercent);
-                var avgDeviation = deviations.Average();
-                var medianDeviation = GetMedian(deviations.ToList());
-                
-                stats.AppendLine($"  Среднее отклонение: {avgDeviation:+F1}%");
-                stats.AppendLine($"  Медианное отклонение: {medianDeviation:+F1}%");
-                
-                // Категории отклонений для данной серии
-                var economyCount = seriesRoutes.Count(r => r.DeviationPercent < -5);
-                var normalCount = seriesRoutes.Count(r => Math.Abs(r.DeviationPercent) <= 5);
-                var overrunCount = seriesRoutes.Count(r => r.DeviationPercent > 5);
-                
-                stats.AppendLine("  Распределение:");
-                if (economyCount > 0) stats.AppendLine($"    Экономия: {economyCount} ({economyCount / (double)seriesRoutes.Count * 100:F1}%)");
-                if (normalCount > 0) stats.AppendLine($"    В норме: {normalCount} ({normalCount / (double)seriesRoutes.Count * 100:F1}%)");
-                if (overrunCount > 0) stats.AppendLine($"    Перерасход: {overrunCount} ({overrunCount / (double)seriesRoutes.Count * 100:F1}%)");
-            }
-            
-            stats.AppendLine();
-        }
-        
-        // Общая статистика по типам локомотивов
-        stats.AppendLine("СТАТИСТИКА ПО ТИПАМ:");
-        stats.AppendLine("-".PadRight(25, '-'));
-        
-        var typeGroups = _routes
-            .Where(r => !string.IsNullOrEmpty(r.LocomotiveType))
-            .GroupBy(r => r.LocomotiveType)
-            .OrderByDescending(g => g.Count());
-        
-        foreach (var typeGroup in typeGroups)
-        {
-            var typeRoutes = typeGroup.ToList();
-            var avgDeviation = typeRoutes.Where(r => r.DeviationPercent != 0).Average(r => r.DeviationPercent);
-            
-            stats.AppendLine($"{typeGroup.Key}: {typeRoutes.Count} поездок, среднее отклонение {avgDeviation:+F1}%");
-        }
-        
-        return stats.ToString();
-    }using System.ComponentModel;
+using System.ComponentModel;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Windows;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
+using OfficeOpenXml;
+using OfficeOpenXml.Style;
+using System.Drawing;
 using AnalysisNorm.Core.Entities;
 using AnalysisNorm.UI.Commands;
 
 namespace AnalysisNorm.UI.Windows;
 
 /// <summary>
-/// Окно статистики маршрутов - аналог Python _show_routes_statistics
+/// CHAT 6: Complete Route Statistics Window Implementation
+/// Окно статистики маршрутов - полный аналог Python _show_routes_statistics
 /// </summary>
 public partial class RouteStatisticsWindow : Window
 {
@@ -149,7 +32,8 @@ public partial class RouteStatisticsWindow : Window
 }
 
 /// <summary>
-/// ViewModel для статистики маршрутов - аналог Python routes statistics processing
+/// CHAT 6: Complete ViewModel для статистики маршрутов
+/// Полный аналог Python routes statistics processing + Excel export
 /// </summary>
 public class RouteStatisticsViewModel : INotifyPropertyChanged
 {
@@ -170,9 +54,6 @@ public class RouteStatisticsViewModel : INotifyPropertyChanged
 
     #region Конструктор
 
-    /// <summary>
-    /// Конструктор ViewModel статистики
-    /// </summary>
     public RouteStatisticsViewModel(
         ILogger<RouteStatisticsViewModel> logger,
         List<Route> routes,
@@ -185,68 +66,85 @@ public class RouteStatisticsViewModel : INotifyPropertyChanged
         _singleSectionOnly = singleSectionOnly;
 
         // Инициализируем команды
-        ExportStatisticsCommand = new AsyncCommand(ExportStatisticsAsync);
+        ExportCommand = new AsyncCommand<object?>(ExportStatisticsAsync);
 
-        // Генерируем статистику
+        // Генерируем статистики
         GenerateAllStatistics();
+
+        _logger.LogInformation("Создана статистика для {Count} маршрутов участка: {SectionName}", 
+            _routes.Count, _sectionName);
     }
 
     #endregion
 
     #region Properties
 
+    /// <summary>
+    /// Общая информация - аналог Python general info header
+    /// </summary>
     public string GeneralInfo
     {
         get => _generalInfo;
         private set => SetProperty(ref _generalInfo, value);
     }
 
+    /// <summary>
+    /// Общая статистика - аналог Python general statistics
+    /// </summary>
     public string GeneralStatistics
     {
         get => _generalStatistics;
         private set => SetProperty(ref _generalStatistics, value);
     }
 
+    /// <summary>
+    /// Статистика по участкам - аналог Python sections statistics
+    /// </summary>
     public string SectionStatistics
     {
         get => _sectionStatistics;
         private set => SetProperty(ref _sectionStatistics, value);
     }
 
+    /// <summary>
+    /// Статистика по локомотивам - аналог Python locomotives statistics
+    /// </summary>
     public string LocomotiveStatistics
     {
         get => _locomotiveStatistics;
         private set => SetProperty(ref _locomotiveStatistics, value);
     }
 
+    /// <summary>
+    /// Статистика отклонений - аналог Python deviations statistics
+    /// </summary>
     public string DeviationStatistics
     {
         get => _deviationStatistics;
         private set => SetProperty(ref _deviationStatistics, value);
     }
 
-    public ICommand ExportStatisticsCommand { get; }
+    /// <summary>
+    /// Команда экспорта статистики
+    /// </summary>
+    public ICommand ExportCommand { get; }
 
     #endregion
 
-    #region Генерация статистики - аналоги Python statistics methods
+    #region Private Methods - Generation
 
     /// <summary>
-    /// Генерирует всю статистику - аналог Python comprehensive statistics
+    /// Генерирует всю статистику - аналог Python statistics generation
     /// </summary>
     private void GenerateAllStatistics()
     {
         try
         {
-            var filterSuffix = _singleSectionOnly ? " [фильтр: один участок]" : "";
-            GeneralInfo = $"Анализ участка: {_sectionName}{filterSuffix} | Маршрутов: {_routes.Count} | Обновлено: {DateTime.Now:HH:mm dd.MM.yyyy}";
-
-            GeneralStatistics = GenerateGeneralStatistics();
-            SectionStatistics = GenerateSectionStatistics();
-            LocomotiveStatistics = GenerateLocomotiveStatistics();
-            DeviationStatistics = GenerateDeviationStatistics();
-
-            _logger.LogInformation("Статистика сгенерирована для {RouteCount} маршрутов", _routes.Count);
+            GenerateGeneralInfo();
+            GenerateGeneralStatistics();
+            GenerateSectionStatistics();
+            GenerateLocomotiveStatistics();
+            GenerateDeviationStatistics();
         }
         catch (Exception ex)
         {
@@ -255,276 +153,198 @@ public class RouteStatisticsViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Генерирует общую статистику - аналог Python general stats
+    /// Общая информация - аналог Python general info
     /// </summary>
-    private string GenerateGeneralStatistics()
+    private void GenerateGeneralInfo()
     {
-        var stats = new StringBuilder();
+        var info = new StringBuilder();
+        info.AppendLine($"Участок: {_sectionName}");
+        info.AppendLine($"Всего маршрутов: {_routes.Count}");
         
-        stats.AppendLine("ОБЩАЯ СТАТИСТИКА МАРШРУТОВ");
-        stats.AppendLine("=".PadRight(50, '='));
-        stats.AppendLine();
-        
-        // Основные показатели
-        stats.AppendLine($"Всего маршрутов: {_routes.Count}");
-        stats.AppendLine($"Уникальных номеров: {_routes.Select(r => r.RouteNumber).Distinct().Count()}");
-        stats.AppendLine();
-        
-        // Временной диапазон
-        if (_routes.Any(r => r.TripDate != default))
+        if (_singleSectionOnly)
         {
-            var minDate = _routes.Where(r => r.TripDate != default).Min(r => r.TripDate);
-            var maxDate = _routes.Where(r => r.TripDate != default).Max(r => r.TripDate);
-            stats.AppendLine($"Период данных: {minDate:dd.MM.yyyy} - {maxDate:dd.MM.yyyy}");
-            stats.AppendLine();
+            info.AppendLine("Фильтр: только маршруты с одним участком");
         }
         
-        // Энергетические показатели
-        if (_routes.Any(r => r.MechanicalWork > 0))
-        {
-            stats.AppendLine("ЭНЕРГЕТИЧЕСКИЕ ПОКАЗАТЕЛИ:");
-            stats.AppendLine("-".PadRight(30, '-'));
-            
-            var mechWorkValues = _routes.Where(r => r.MechanicalWork > 0).Select(r => r.MechanicalWork);
-            var elecConsValues = _routes.Where(r => r.ElectricConsumption > 0).Select(r => r.ElectricConsumption);
-            var deviationValues = _routes.Where(r => r.DeviationPercent != 0).Select(r => r.DeviationPercent);
-            
-            stats.AppendLine($"Механическая работа:");
-            stats.AppendLine($"  Среднее: {mechWorkValues.Average():F0} кВт⋅час");
-            stats.AppendLine($"  Диапазон: {mechWorkValues.Min():F0} - {mechWorkValues.Max():F0} кВт⋅час");
-            stats.AppendLine();
-            
-            stats.AppendLine($"Расход электроэнергии:");
-            stats.AppendLine($"  Среднее: {elecConsValues.Average():F0} кВт⋅час");
-            stats.AppendLine($"  Диапазон: {elecConsValues.Min():F0} - {elecConsValues.Max():F0} кВт⋅час");
-            stats.AppendLine();
-            
-            if (deviationValues.Any())
-            {
-                stats.AppendLine($"Отклонение от норм:");
-                stats.AppendLine($"  Среднее: {deviationValues.Average():+F1}%");
-                stats.AppendLine($"  Медиана: {GetMedian(deviationValues.ToList()):+F1}%");
-                stats.AppendLine($"  Диапазон: {deviationValues.Min():+F1}% до {deviationValues.Max():+F1}%");
-            }
-        }
+        info.AppendLine($"Период: {GetDateRange()}");
+        info.AppendLine($"Сгенерировано: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         
-        return stats.ToString();
+        GeneralInfo = info.ToString();
     }
 
     /// <summary>
-    /// Генерирует статистику по участкам - аналог Python section-wise stats
+    /// Общая статистика - аналог Python general statistics calculation
     /// </summary>
-    private string GenerateSectionStatistics()
+    private void GenerateGeneralStatistics()
     {
         var stats = new StringBuilder();
+        stats.AppendLine("ОБЩАЯ СТАТИСТИКА");
+        stats.AppendLine("=".PadRight(40, '='));
+        stats.AppendLine();
+
+        if (!_routes.Any())
+        {
+            stats.AppendLine("Нет данных для анализа");
+            GeneralStatistics = stats.ToString();
+            return;
+        }
+
+        // Основные показатели - аналог Python basic statistics
+        stats.AppendLine($"Общее количество маршрутов: {_routes.Count:N0}");
+        stats.AppendLine($"Средний расход электроэнергии: {_routes.Average(r => r.ElectricConsumption):F2} кВт⋅час");
+        stats.AppendLine($"Средняя механическая работа: {_routes.Average(r => r.MechanicalWork):F2} кВт⋅час");
+        stats.AppendLine($"Средний удельный расход: {_routes.Average(r => r.SpecificConsumption):F3} кВт⋅час/ткм⋅км");
+        stats.AppendLine();
+
+        // Статистика отклонений - аналог Python deviation statistics
+        var avgDeviation = _routes.Average(r => r.DeviationPercent);
+        var maxDeviation = _routes.Max(r => r.DeviationPercent);
+        var minDeviation = _routes.Min(r => r.DeviationPercent);
         
+        stats.AppendLine($"Среднее отклонение: {avgDeviation:+F2;-F2;0.00}%");
+        stats.AppendLine($"Максимальное отклонение: {maxDeviation:+F2;-F2;0.00}%");
+        stats.AppendLine($"Минимальное отклонение: {minDeviation:+F2;-F2;0.00}%");
+        stats.AppendLine();
+
+        // Распределение по дистанции и времени
+        var totalDistance = _routes.Sum(r => r.Distance);
+        var avgDistance = _routes.Average(r => r.Distance);
+        stats.AppendLine($"Общая дистанция: {totalDistance:F1} км");
+        stats.AppendLine($"Средняя дистанция: {avgDistance:F1} км");
+        
+        var routesWithTime = _routes.Where(r => r.TravelTime.HasValue).ToList();
+        if (routesWithTime.Any())
+        {
+            var avgTime = TimeSpan.FromTicks((long)routesWithTime.Average(r => r.TravelTime!.Value.Ticks));
+            stats.AppendLine($"Среднее время в пути: {avgTime:hh\\:mm}");
+        }
+
+        GeneralStatistics = stats.ToString();
+    }
+
+    /// <summary>
+    /// Статистика по участкам - аналог Python sections analysis
+    /// </summary>
+    private void GenerateSectionStatistics()
+    {
+        var stats = new StringBuilder();
         stats.AppendLine("СТАТИСТИКА ПО УЧАСТКАМ");
-        stats.AppendLine("=".PadRight(50, '='));
+        stats.AppendLine("=".PadRight(40, '='));
         stats.AppendLine();
-        
-        // Группируем маршруты по участкам
+
         var sectionGroups = _routes
-            .SelectMany(r => r.SectionNames.Select(sn => new { Route = r, SectionName = sn }))
-            .GroupBy(x => x.SectionName)
-            .OrderBy(g => g.Key);
-        
-        foreach (var sectionGroup in sectionGroups)
+            .SelectMany(r => r.SectionNames.Select(s => new { Section = s, Route = r }))
+            .GroupBy(x => x.Section)
+            .OrderByDescending(g => g.Count())
+            .ToList();
+
+        foreach (var group in sectionGroups.Take(10)) // Топ 10 участков
         {
-            var sectionRoutes = sectionGroup.Select(x => x.Route).ToList();
+            var routes = group.Select(x => x.Route).ToList();
+            var avgDeviation = routes.Average(r => r.DeviationPercent);
             
-            stats.AppendLine($"УЧАСТОК: {sectionGroup.Key}");
-            stats.AppendLine("-".PadRight(30, '-'));
-            stats.AppendLine($"Маршрутов: {sectionRoutes.Count}");
-            
-            if (sectionRoutes.Any(r => r.MechanicalWork > 0))
-            {
-                var avgMechWork = sectionRoutes.Where(r => r.MechanicalWork > 0).Average(r => r.MechanicalWork);
-                var avgElecCons = sectionRoutes.Where(r => r.ElectricConsumption > 0).Average(r => r.ElectricConsumption);
-                var avgDeviation = sectionRoutes.Where(r => r.DeviationPercent != 0).Average(r => r.DeviationPercent);
-                
-                stats.AppendLine($"Средняя мех. работа: {avgMechWork:F0} кВт⋅час");
-                stats.AppendLine($"Средний расход: {avgElecCons:F0} кВт⋅час");
-                stats.AppendLine($"Среднее отклонение: {avgDeviation:+F1}%");
-            }
-            
+            stats.AppendLine($"📍 {group.Key}:");
+            stats.AppendLine($"   Маршрутов: {routes.Count}");
+            stats.AppendLine($"   Среднее отклонение: {avgDeviation:+F1;-F1;0.0}%");
+            stats.AppendLine($"   Средний расход: {routes.Average(r => r.ElectricConsumption):F0} кВт⋅час");
             stats.AppendLine();
         }
-        
-        return stats.ToString();
+
+        if (sectionGroups.Count > 10)
+        {
+            stats.AppendLine($"... и еще {sectionGroups.Count - 10} участков");
+        }
+
+        SectionStatistics = stats.ToString();
     }
 
     /// <summary>
-    /// Генерирует статистику по локомотивам - аналог Python locomotive-wise stats
+    /// Статистика по локомотивам - аналог Python locomotives analysis
     /// </summary>
-    private string GenerateLocomotiveStatistics()
+    private void GenerateLocomotiveStatistics()
     {
         var stats = new StringBuilder();
-        
         stats.AppendLine("СТАТИСТИКА ПО ЛОКОМОТИВАМ");
-        stats.AppendLine("=".PadRight(50, '='));
+        stats.AppendLine("=".PadRight(40, '='));
         stats.AppendLine();
-        
-        // Группируем по сериям локомотивов
+
+        // Группировка по сериям - аналог Python locomotive grouping
         var seriesGroups = _routes
             .Where(r => !string.IsNullOrEmpty(r.LocomotiveSeries))
-            .GroupBy(r => r.LocomotiveSeries)
+            .GroupBy(r => r.LocomotiveSeries!)
             .OrderByDescending(g => g.Count())
-            .Take(20); // Топ-20 серий
-        
-        foreach (var seriesGroup in seriesGroups)
+            .ToList();
+
+        stats.AppendLine($"Всего серий локомотивов: {seriesGroups.Count}");
+        stats.AppendLine();
+
+        foreach (var group in seriesGroups.Take(15)) // Топ 15 серий
         {
-            var seriesRoutes = seriesGroup.ToList();
+            var avgDeviation = group.Average(r => r.DeviationPercent);
+            var locomotiveCount = group.Select(r => r.LocomotiveNumber).Distinct().Count();
             
-            stats.AppendLine($"СЕРИЯ: {seriesGroup.Key}");
-            stats.AppendLine("-".PadRight(25, '-'));
-            stats.AppendLine($"Поездок: {seriesRoutes.Count}");
-            
-            if (seriesRoutes.Any(r => r.DeviationPercent != 0))
-            {
-                var deviations = seriesRoutes.Where(r => r.DeviationPercent != 0).Select(r => r.DeviationPercent);
-                var avgDeviation = deviations.Average();
-                
-                stats.AppendLine($"Среднее отклонение: {avgDeviation:+F1}%");
-                
-                // Категории отклонений для данной серии
-                var economyCount = seriesRoutes.Count(r => r.DeviationPercent < -5);
-                var normalCount = seriesRoutes.Count(r => Math.Abs(r.DeviationPercent) <= 5);
-                var overrunCount = seriesRoutes.Count(r => r.DeviationPercent > 5);
-                
-                if (economyCount > 0) stats.AppendLine($"  Экономия: {economyCount} ({economyCount / (double)seriesRoutes.Count * 100:F1}%)");
-                if (normalCount > 0) stats.AppendLine($"  В норме: {normalCount} ({normalCount / (double)seriesRoutes.Count * 100:F1}%)");
-                if (overrunCount > 0) stats.AppendLine($"  Перерасход: {overrunCount} ({overrunCount / (double)seriesRoutes.Count * 100:F1}%)");
-            }
-            
+            stats.AppendLine($"🚂 Серия {group.Key}:");
+            stats.AppendLine($"   Маршрутов: {group.Count()}");
+            stats.AppendLine($"   Локомотивов: {locomotiveCount}");
+            stats.AppendLine($"   Среднее отклонение: {avgDeviation:+F1;-F1;0.0}%");
+            stats.AppendLine($"   Средний расход: {group.Average(r => r.ElectricConsumption):F0} кВт⋅час");
             stats.AppendLine();
         }
-        
-        return stats.ToString();
+
+        LocomotiveStatistics = stats.ToString();
     }
 
     /// <summary>
-    /// Генерирует статистику отклонений - аналог Python detailed deviation stats
+    /// Статистика отклонений - аналог Python deviations categorization
     /// </summary>
-    private string GenerateDeviationStatistics()
+    private void GenerateDeviationStatistics()
     {
         var stats = new StringBuilder();
-        
-        stats.AppendLine("ДЕТАЛЬНАЯ СТАТИСТИКА ОТКЛОНЕНИЙ");
-        stats.AppendLine("=".PadRight(50, '='));
+        stats.AppendLine("АНАЛИЗ ОТКЛОНЕНИЙ ОТ НОРМ");
+        stats.AppendLine("=".PadRight(40, '='));
         stats.AppendLine();
-        
-        var routesWithDeviations = _routes.Where(r => r.DeviationPercent != 0).ToList();
-        
-        if (!routesWithDeviations.Any())
+
+        // Категоризация отклонений - аналог Python deviation categories
+        var categories = new[]
         {
-            stats.AppendLine("Нет данных об отклонениях для анализа.");
-            return stats.ToString();
-        }
-        
-        // Категории отклонений - аналог Python StatusClassifier categories
-        var categories = new Dictionary<string, (Func<double, bool> condition, string description)>
-        {
-            { "economy_strong", (d => d < -30, "Экономия сильная (< -30%)") },
-            { "economy_medium", (d => d >= -30 && d < -20, "Экономия средняя (-30% до -20%)") },
-            { "economy_weak", (d => d >= -20 && d < -5, "Экономия слабая (-20% до -5%)") },
-            { "normal", (d => d >= -5 && d <= 5, "В норме (-5% до +5%)") },
-            { "overrun_weak", (d => d > 5 && d <= 20, "Перерасход слабый (+5% до +20%)") },
-            { "overrun_medium", (d => d > 20 && d <= 30, "Перерасход средний (+20% до +30%)") },
-            { "overrun_strong", (d => d > 30, "Перерасход сильный (> +30%)") }
+            ("Сильная экономия (< -15%)", _routes.Count(r => r.DeviationPercent < -15)),
+            ("Средняя экономия (-15% до -10%)", _routes.Count(r => r.DeviationPercent >= -15 && r.DeviationPercent < -10)),
+            ("Слабая экономия (-10% до -5%)", _routes.Count(r => r.DeviationPercent >= -10 && r.DeviationPercent < -5)),
+            ("В норме (-5% до +5%)", _routes.Count(r => Math.Abs(r.DeviationPercent) <= 5)),
+            ("Слабый перерасход (+5% до +10%)", _routes.Count(r => r.DeviationPercent > 5 && r.DeviationPercent <= 10)),
+            ("Средний перерасход (+10% до +15%)", _routes.Count(r => r.DeviationPercent > 10 && r.DeviationPercent <= 15)),
+            ("Сильный перерасход (> +15%)", _routes.Count(r => r.DeviationPercent > 15))
         };
 
-        var totalRoutes = routesWithDeviations.Count;
-        
-        foreach (var (key, (condition, description)) in categories)
+        foreach (var (category, count) in categories)
         {
-            var categoryRoutes = routesWithDeviations.Where(r => condition(r.DeviationPercent)).ToList();
+            var percentage = _routes.Count > 0 ? (double)count / _routes.Count * 100 : 0;
+            var icon = GetCategoryIcon(category);
             
-            if (categoryRoutes.Any())
-            {
-                var percentage = categoryRoutes.Count / (double)totalRoutes * 100;
-                var avgDeviation = categoryRoutes.Average(r => r.DeviationPercent);
-                
-                stats.AppendLine($"{description}:");
-                stats.AppendLine($"  Количество: {categoryRoutes.Count} ({percentage:F1}%)");
-                stats.AppendLine($"  Среднее отклонение: {avgDeviation:+F1}%");
-                
-                // Топ маршрутов в категории (по отклонению)
-                var topRoutes = categoryRoutes
-                    .OrderBy(r => Math.Abs(r.DeviationPercent))
-                    .Take(3);
-                    
-                stats.AppendLine("  Примеры маршрутов:");
-                foreach (var route in topRoutes)
-                {
-                    stats.AppendLine($"    {route.RouteNumber}: {route.DeviationPercent:+F1}%");
-                }
-                
-                stats.AppendLine();
-            }
+            stats.AppendLine($"{icon} {category}:");
+            stats.AppendLine($"   Количество: {count} ({percentage:F1}%)");
+            stats.AppendLine();
         }
-        
-        // Общие показатели отклонений
-        stats.AppendLine("ОБЩИЕ ПОКАЗАТЕЛИ ОТКЛОНЕНИЙ:");
-        stats.AppendLine("-".PadRight(35, '-'));
-        
-        var allDeviations = routesWithDeviations.Select(r => r.DeviationPercent).ToList();
-        var economyRoutes = allDeviations.Count(d => d < -5);
-        var normalRoutes = allDeviations.Count(d => Math.Abs(d) <= 5);
-        var overrunRoutes = allDeviations.Count(d => d > 5);
-        
-        stats.AppendLine($"Всего с отклонениями: {totalRoutes}");
-        stats.AppendLine($"Экономия (< -5%): {economyRoutes} ({economyRoutes / (double)totalRoutes * 100:F1}%)");
-        stats.AppendLine($"В норме (±5%): {normalRoutes} ({normalRoutes / (double)totalRoutes * 100:F1}%)");
-        stats.AppendLine($"Перерасход (> +5%): {overrunRoutes} ({overrunRoutes / (double)totalRoutes * 100:F1}%)");
-        stats.AppendLine();
-        stats.AppendLine($"Среднее отклонение: {allDeviations.Average():+F2}%");
-        stats.AppendLine($"Медианное отклонение: {GetMedian(allDeviations):+F2}%");
-        stats.AppendLine($"Стандартное отклонение: {GetStandardDeviation(allDeviations):F2}%");
-        
-        return stats.ToString();
+
+        // Дополнительный анализ - аналог Python additional insights
+        var economyRoutes = _routes.Count(r => r.DeviationPercent < -5);
+        var overrunRoutes = _routes.Count(r => r.DeviationPercent > 5);
+        var normalRoutes = _routes.Count(r => Math.Abs(r.DeviationPercent) <= 5);
+
+        stats.AppendLine("СВОДКА:");
+        stats.AppendLine($"✅ Экономичные маршруты: {economyRoutes} ({(double)economyRoutes / _routes.Count * 100:F1}%)");
+        stats.AppendLine($"⚠️  Неэкономичные маршруты: {overrunRoutes} ({(double)overrunRoutes / _routes.Count * 100:F1}%)");
+        stats.AppendLine($"📊 Нормальные маршруты: {normalRoutes} ({(double)normalRoutes / _routes.Count * 100:F1}%)");
+
+        DeviationStatistics = stats.ToString();
     }
 
     #endregion
 
-    #region Вспомогательные математические методы
+    #region Export Implementation - CHAT 6 Complete
 
     /// <summary>
-    /// Вычисляет медиану списка значений
-    /// </summary>
-    private double GetMedian(List<double> values)
-    {
-        if (!values.Any()) return 0;
-        
-        var sorted = values.OrderBy(x => x).ToList();
-        var count = sorted.Count;
-        
-        if (count % 2 == 0)
-        {
-            return (sorted[count / 2 - 1] + sorted[count / 2]) / 2.0;
-        }
-        
-        return sorted[count / 2];
-    }
-
-    /// <summary>
-    /// Вычисляет стандартное отклонение
-    /// </summary>
-    private double GetStandardDeviation(List<double> values)
-    {
-        if (!values.Any()) return 0;
-        
-        var average = values.Average();
-        var sumOfSquaredDiffs = values.Sum(v => Math.Pow(v - average, 2));
-        
-        return Math.Sqrt(sumOfSquaredDiffs / values.Count);
-    }
-
-    #endregion
-
-    #region Commands
-
-    /// <summary>
-    /// Экспорт статистики в Excel - аналог Python export functionality
+    /// CHAT 6: Полная реализация экспорта статистики - аналог Python export functionality
     /// </summary>
     private async Task ExportStatisticsAsync(object? parameter)
     {
@@ -535,7 +355,7 @@ public class RouteStatisticsViewModel : INotifyPropertyChanged
                 Title = "Экспорт статистики",
                 Filter = "Excel файлы (*.xlsx)|*.xlsx|Текстовые файлы (*.txt)|*.txt",
                 DefaultExt = "xlsx",
-                FileName = $"Статистика_{_sectionName}_{DateTime.Now:yyyyMMdd_HHmmss}"
+                FileName = $"Статистика_{_sectionName?.Replace(" ", "_")}_{DateTime.Now:yyyyMMdd_HHmmss}"
             };
 
             if (dialog.ShowDialog() == true)
@@ -556,7 +376,7 @@ public class RouteStatisticsViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Экспорт в файл
+    /// Экспорт в файл - выбор формата
     /// </summary>
     private async Task ExportToFile(string filePath)
     {
@@ -593,13 +413,187 @@ public class RouteStatisticsViewModel : INotifyPropertyChanged
         });
     }
 
+    /// <summary>
+    /// CHAT 6: ЗАВЕРШЕНА - Полная реализация экспорта в Excel через EPPlus
+    /// </summary>
     private void ExportToExcel(string filePath)
     {
-        // TODO: Реализация экспорта в Excel через EPPlus
-        // Пока экспортируем как текст
-        ExportToText(filePath.Replace(".xlsx", ".txt"));
+        ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+
+        using var package = new ExcelPackage();
+        
+        // Создаем листы
+        CreateSummarySheet(package);
+        CreateDetailedStatisticsSheet(package);
+        CreateRoutesDataSheet(package);
+
+        // Сохраняем файл
+        package.SaveAs(new FileInfo(filePath));
+        
+        _logger.LogInformation("Статистика экспортирована в Excel: {FilePath}", filePath);
     }
 
+    /// <summary>
+    /// Создает лист сводки
+    /// </summary>
+    private void CreateSummarySheet(ExcelPackage package)
+    {
+        var worksheet = package.Workbook.Worksheets.Add("Сводка");
+        
+        // Заголовок
+        worksheet.Cells[1, 1].Value = $"СВОДКА СТАТИСТИКИ: {_sectionName}";
+        worksheet.Cells[1, 1].Style.Font.Size = 16;
+        worksheet.Cells[1, 1].Style.Font.Bold = true;
+        
+        // Общая информация
+        int row = 3;
+        var infoLines = GeneralInfo.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var line in infoLines)
+        {
+            var parts = line.Split(':', 2);
+            if (parts.Length == 2)
+            {
+                worksheet.Cells[row, 1].Value = parts[0].Trim();
+                worksheet.Cells[row, 2].Value = parts[1].Trim();
+                worksheet.Cells[row, 1].Style.Font.Bold = true;
+            }
+            row++;
+        }
+
+        // Ключевые метрики
+        row += 2;
+        worksheet.Cells[row, 1].Value = "КЛЮЧЕВЫЕ ПОКАЗАТЕЛИ";
+        worksheet.Cells[row, 1].Style.Font.Bold = true;
+        worksheet.Cells[row, 1].Style.Font.Size = 14;
+        row++;
+
+        if (_routes.Any())
+        {
+            var metrics = new[]
+            {
+                ("Средний расход", $"{_routes.Average(r => r.ElectricConsumption):F2} кВт⋅час"),
+                ("Среднее отклонение", $"{_routes.Average(r => r.DeviationPercent):+F2;-F2;0.00}%"),
+                ("Экономичные маршруты", $"{_routes.Count(r => r.DeviationPercent < -5)} ({_routes.Count(r => r.DeviationPercent < -5) * 100.0 / _routes.Count:F1}%)"),
+                ("Перерасход", $"{_routes.Count(r => r.DeviationPercent > 5)} ({_routes.Count(r => r.DeviationPercent > 5) * 100.0 / _routes.Count:F1}%)")
+            };
+
+            foreach (var (metric, value) in metrics)
+            {
+                worksheet.Cells[row, 1].Value = metric;
+                worksheet.Cells[row, 2].Value = value;
+                worksheet.Cells[row, 1].Style.Font.Bold = true;
+                row++;
+            }
+        }
+
+        // Форматирование
+        worksheet.Cells.AutoFitColumns(0);
+        worksheet.Cells[1, 1, row, 2].Style.Border.BorderAround(OfficeOpenXml.Style.ExcelBorderStyle.Thin);
+    }
+
+    /// <summary>
+    /// Создает лист детальной статистики
+    /// </summary>
+    private void CreateDetailedStatisticsSheet(ExcelPackage package)
+    {
+        var worksheet = package.Workbook.Worksheets.Add("Детальная статистика");
+        
+        int row = 1;
+        
+        // Добавляем каждую секцию статистики
+        var sections = new[]
+        {
+            ("ОБЩАЯ СТАТИСТИКА", GeneralStatistics),
+            ("ПО УЧАСТКАМ", SectionStatistics),
+            ("ПО ЛОКОМОТИВАМ", LocomotiveStatistics),
+            ("АНАЛИЗ ОТКЛОНЕНИЙ", DeviationStatistics)
+        };
+
+        foreach (var (title, content) in sections)
+        {
+            worksheet.Cells[row, 1].Value = title;
+            worksheet.Cells[row, 1].Style.Font.Bold = true;
+            worksheet.Cells[row, 1].Style.Font.Size = 14;
+            row += 2;
+            
+            var lines = content.Split(Environment.NewLine, StringSplitOptions.None);
+            foreach (var line in lines)
+            {
+                worksheet.Cells[row, 1].Value = line;
+                if (line.Contains(":"))
+                {
+                    worksheet.Cells[row, 1].Style.Font.Bold = true;
+                }
+                row++;
+            }
+            row += 2;
+        }
+        
+        worksheet.Cells.AutoFitColumns(0);
+    }
+
+    /// <summary>
+    /// Создает лист с данными маршрутов
+    /// </summary>
+    private void CreateRoutesDataSheet(ExcelPackage package)
+    {
+        var worksheet = package.Workbook.Worksheets.Add("Данные маршрутов");
+        
+        // Заголовки
+        var headers = new[] { "№ Маршрута", "Дата", "Участки", "Локомотив", "Расход факт", "Расход норма", "Отклонение %", "Статус" };
+        for (int i = 0; i < headers.Length; i++)
+        {
+            worksheet.Cells[1, i + 1].Value = headers[i];
+            worksheet.Cells[1, i + 1].Style.Font.Bold = true;
+            worksheet.Cells[1, i + 1].Style.Fill.PatternType = ExcelFillStyle.Solid;
+            worksheet.Cells[1, i + 1].Style.Fill.BackgroundColor.SetColor(Color.LightBlue);
+        }
+
+        // Данные
+        for (int i = 0; i < _routes.Count; i++)
+        {
+            var route = _routes[i];
+            var row = i + 2;
+            
+            worksheet.Cells[row, 1].Value = route.RouteNumber;
+            worksheet.Cells[row, 2].Value = route.Date.ToString("yyyy-MM-dd");
+            worksheet.Cells[row, 3].Value = string.Join(", ", route.SectionNames);
+            worksheet.Cells[row, 4].Value = $"{route.LocomotiveSeries} {route.LocomotiveNumber}";
+            worksheet.Cells[row, 5].Value = route.ElectricConsumption;
+            worksheet.Cells[row, 6].Value = route.NormConsumption;
+            worksheet.Cells[row, 7].Value = route.DeviationPercent;
+            worksheet.Cells[row, 8].Value = GetDeviationCategory(route.DeviationPercent);
+            
+            // Форматирование числовых данных
+            worksheet.Cells[row, 5].Style.Numberformat.Format = "#,##0.0";
+            worksheet.Cells[row, 6].Style.Numberformat.Format = "#,##0.0";
+            worksheet.Cells[row, 7].Style.Numberformat.Format = "+0.0%;-0.0%;0.0%";
+            
+            // Цветовое кодирование строки по отклонению
+            var color = GetDeviationRowColor(route.DeviationPercent);
+            if (color != Color.Transparent)
+            {
+                for (int col = 1; col <= headers.Length; col++)
+                {
+                    worksheet.Cells[row, col].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                    worksheet.Cells[row, col].Style.Fill.BackgroundColor.SetColor(color);
+                }
+            }
+        }
+        
+        worksheet.Cells.AutoFitColumns(0);
+        
+        // Добавляем границы
+        var dataRange = worksheet.Cells[1, 1, _routes.Count + 1, headers.Length];
+        dataRange.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+        dataRange.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+        dataRange.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+        dataRange.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+    }
+
+    /// <summary>
+    /// Экспорт в текстовый файл - простой формат
+    /// </summary>
     private void ExportToText(string filePath)
     {
         var content = new StringBuilder();
@@ -614,6 +608,75 @@ public class RouteStatisticsViewModel : INotifyPropertyChanged
         content.AppendLine(DeviationStatistics);
         
         File.WriteAllText(filePath, content.ToString(), Encoding.UTF8);
+    }
+
+    #endregion
+
+    #region Helper Methods
+
+    /// <summary>
+    /// Определяет диапазон дат
+    /// </summary>
+    private string GetDateRange()
+    {
+        if (!_routes.Any()) return "Нет данных";
+        
+        var minDate = _routes.Min(r => r.Date);
+        var maxDate = _routes.Max(r => r.Date);
+        
+        return minDate.Date == maxDate.Date 
+            ? minDate.ToString("yyyy-MM-dd") 
+            : $"{minDate:yyyy-MM-dd} — {maxDate:yyyy-MM-dd}";
+    }
+
+    /// <summary>
+    /// Получает иконку для категории
+    /// </summary>
+    private string GetCategoryIcon(string category)
+    {
+        return category switch
+        {
+            var c when c.Contains("Сильная экономия") => "💚",
+            var c when c.Contains("Средняя экономия") => "🟢",
+            var c when c.Contains("Слабая экономия") => "🟡",
+            var c when c.Contains("В норме") => "🔵",
+            var c when c.Contains("Слабый перерасход") => "🟠",
+            var c when c.Contains("Средний перерасход") => "🔴",
+            var c when c.Contains("Сильный перерасход") => "🚨",
+            _ => "📊"
+        };
+    }
+
+    /// <summary>
+    /// Определяет категорию отклонения для Excel
+    /// </summary>
+    private string GetDeviationCategory(double deviationPercent)
+    {
+        return deviationPercent switch
+        {
+            < -15 => "Сильная экономия",
+            < -10 => "Средняя экономия",
+            < -5 => "Слабая экономия",
+            >= -5 and <= 5 => "В норме",
+            > 5 and <= 10 => "Слабый перерасход",
+            > 10 and <= 15 => "Средний перерасход",
+            _ => "Сильный перерасход"
+        };
+    }
+
+    /// <summary>
+    /// Определяет цвет строки по отклонению
+    /// </summary>
+    private Color GetDeviationRowColor(double deviationPercent)
+    {
+        return deviationPercent switch
+        {
+            < -15 => Color.FromArgb(200, 0, 100, 0),    // Темно-зеленый
+            < -5 => Color.FromArgb(200, 144, 238, 144),  // Светло-зеленый
+            >= -5 and <= 5 => Color.Transparent,        // Без подсветки
+            > 5 and <= 15 => Color.FromArgb(200, 255, 165, 0),  // Оранжевый
+            _ => Color.FromArgb(200, 220, 20, 60)        // Красный
+        };
     }
 
     #endregion

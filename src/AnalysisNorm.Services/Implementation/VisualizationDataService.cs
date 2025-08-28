@@ -1,13 +1,19 @@
+using System.Drawing;
+using System.Drawing.Imaging;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OxyPlot;
+using OxyPlot.Axes;
+using OxyPlot.Series;
+using OxyPlot.Wpf;
 using AnalysisNorm.Core.Entities;
 using AnalysisNorm.Services.Interfaces;
 
 namespace AnalysisNorm.Services.Implementation;
 
 /// <summary>
-/// Сервис подготовки данных для визуализации в OxyPlot
-/// Соответствует PlotBuilder из Python analysis/visualization.py
+/// CHAT 6 COMPLETE: Сервис подготовки данных для визуализации в OxyPlot
+/// Соответствует PlotBuilder из Python analysis/visualization.py + экспорт изображений
 /// </summary>
 public class VisualizationDataService : IVisualizationDataService
 {
@@ -45,6 +51,8 @@ public class VisualizationDataService : IVisualizationDataService
         _settings = settings.Value;
     }
 
+    #region Public Interface Implementation
+
     /// <summary>
     /// Подготавливает данные для интерактивного графика
     /// Соответствует create_interactive_plot из Python PlotBuilder
@@ -68,7 +76,7 @@ public class VisualizationDataService : IVisualizationDataService
             visualizationData.NormCurves = new ChartData 
             { 
                 Series = normCurves,
-                Axes = new ChartAxes("Нагрузка на ось, т/ось", "Расход, кВт·ч/10⁴ ткм")
+                Axes = new ChartAxes("Механическая работа, кВт·час", "Расход электроэнергии, кВт·час")
             };
 
             // Подготавливаем точки маршрутов (верхний график)
@@ -76,7 +84,7 @@ public class VisualizationDataService : IVisualizationDataService
             visualizationData.RoutePoints = new ChartData 
             { 
                 Series = routePoints,
-                Axes = new ChartAxes("Нагрузка на ось, т/ось", "Расход, кВт·ч/10⁴ ткм")
+                Axes = new ChartAxes("Механическая работа, кВт·час", "Расход электроэнергии, кВт·час")
             };
 
             // Подготавливаем анализ отклонений (нижний график)
@@ -146,128 +154,99 @@ public class VisualizationDataService : IVisualizationDataService
 
         // Добавляем горизонтальные линии допусков
         var tolerancePercent = (decimal)_settings.DefaultTolerancePercent;
-        var maxIndex = routesList.Count > 0 ? routesList.Count - 1 : 10;
+        var maxIndex = routesList.Count > 0 ? routesList.Count - 1 : 0;
 
-        // Линия верхнего допуска
+        // Верхний допуск (+5%)
         series.Add(new ChartSeries(
-            Name: $"+{tolerancePercent}% допуск",
-            XValues: new[] { 0m, maxIndex },
+            Name: $"Верхний допуск (+{tolerancePercent}%)",
+            XValues: new[] { 0m, (decimal)maxIndex },
             YValues: new[] { tolerancePercent, tolerancePercent },
-            Color: "#FF0000",
+            Color: "#ff4444",
             Type: "line"
         ));
 
-        // Линия нижнего допуска
+        // Нижний допуск (-5%)
         series.Add(new ChartSeries(
-            Name: $"-{tolerancePercent}% допуск", 
-            XValues: new[] { 0m, maxIndex },
+            Name: $"Нижний допуск (-{tolerancePercent}%)",
+            XValues: new[] { 0m, (decimal)maxIndex },
             YValues: new[] { -tolerancePercent, -tolerancePercent },
-            Color: "#FF0000",
+            Color: "#44ff44",
             Type: "line"
         ));
 
         // Линия нормы (0%)
         series.Add(new ChartSeries(
-            Name: "Норма",
-            XValues: new[] { 0m, maxIndex },
+            Name: "Норма (0%)",
+            XValues: new[] { 0m, (decimal)maxIndex },
             YValues: new[] { 0m, 0m },
-            Color: "#000000",
+            Color: "#0066cc",
             Type: "line"
         ));
 
         return new ChartData 
         { 
             Series = series, 
-            Axes = new ChartAxes("Индекс маршрута", "Отклонение, %", 0, maxIndex) 
+            Axes = new ChartAxes("Индекс маршрута", "Отклонение от нормы, %") 
         };
     }
 
     /// <summary>
-    /// Создает сводные данные для дашборда
+    /// CHAT 6 NEW: Экспорт графика в изображение
+    /// Аналог Python plot export functionality с OxyPlot rendering
     /// </summary>
-    public async Task<DashboardData> PrepareDashboardDataAsync(
+    public async Task<bool> ExportPlotToImageAsync(
+        string outputPath,
+        string sectionName,
         IEnumerable<Route> routes,
-        Dictionary<string, InterpolationFunction> normFunctions)
+        Dictionary<string, object> normFunctions,
+        string? specificNormId = null,
+        bool singleSectionOnly = false,
+        PlotExportOptions? options = null)
     {
-        var routesList = routes.ToList();
-        
-        _logger.LogDebug("Подготавливаем данные дашборда для {RouteCount} маршрутов", routesList.Count);
+        _logger.LogInformation("Экспортируем график участка {SectionName} в файл: {OutputPath}", 
+            sectionName, outputPath);
 
-        var dashboardData = new DashboardData();
+        var routesList = routes.ToList();
+        if (!routesList.Any())
+        {
+            _logger.LogWarning("Нет данных для экспорта графика");
+            return false;
+        }
+
+        options ??= new PlotExportOptions();
 
         try
         {
-            // Основная статистика
-            var routesWithDeviations = routesList.Where(r => r.DeviationPercent.HasValue).ToList();
-            
-            if (routesWithDeviations.Any())
-            {
-                var deviations = routesWithDeviations.Select(r => r.DeviationPercent!.Value).ToList();
-                
-                dashboardData.TotalRoutes = routesList.Count;
-                dashboardData.AnalyzedRoutes = routesWithDeviations.Count;
-                dashboardData.AverageDeviation = deviations.Average();
-                dashboardData.MinDeviation = deviations.Min();
-                dashboardData.MaxDeviation = deviations.Max();
-                
-                // Распределение по статусам
-                dashboardData.StatusDistribution = routesWithDeviations
-                    .GroupBy(r => r.Status ?? "Неизвестно")
-                    .ToDictionary(g => g.Key, g => g.Count());
+            // Подготавливаем данные визуализации аналогично Python PlotBuilder
+            var interpolationFunctions = ConvertToInterpolationFunctions(normFunctions);
+            var visualizationData = await PrepareInteractiveChartDataAsync(
+                sectionName, routesList, interpolationFunctions, specificNormId);
 
-                // Топ участков по отклонениям
-                dashboardData.TopSectionsByDeviation = routesWithDeviations
-                    .Where(r => !string.IsNullOrEmpty(r.SectionName))
-                    .GroupBy(r => r.SectionName!)
-                    .Select(g => new SectionSummary
-                    {
-                        SectionName = g.Key,
-                        RouteCount = g.Count(),
-                        AverageDeviation = g.Average(r => r.DeviationPercent!.Value)
-                    })
-                    .OrderByDescending(s => Math.Abs(s.AverageDeviation))
-                    .Take(10)
-                    .ToList();
+            // Создаем OxyPlot модель для экспорта - аналог Python dual subplot structure
+            var plotModel = CreateExportPlotModel(visualizationData, options);
 
-                // Топ локомотивов по отклонениям  
-                dashboardData.TopLocomotivesByDeviation = routesWithDeviations
-                    .Where(r => !string.IsNullOrEmpty(r.LocomotiveSeries) && r.LocomotiveNumber.HasValue)
-                    .GroupBy(r => $"{r.LocomotiveSeries}-{r.LocomotiveNumber}")
-                    .Select(g => new LocomotiveSummary
-                    {
-                        LocomotiveId = g.Key,
-                        RouteCount = g.Count(),
-                        AverageDeviation = g.Average(r => r.DeviationPercent!.Value)
-                    })
-                    .OrderByDescending(l => Math.Abs(l.AverageDeviation))
-                    .Take(10)
-                    .ToList();
-            }
+            // Экспортируем в файл используя OxyPlot exporters
+            await ExportPlotModelToFileAsync(plotModel, outputPath, options);
 
-            // Статистика норм
-            dashboardData.NormStatistics = new NormStatistics
-            {
-                TotalNorms = normFunctions.Count,
-                NormsByType = normFunctions.GroupBy(nf => nf.Value.NormType)
-                    .ToDictionary(g => g.Key, g => g.Count())
-            };
-
-            await Task.CompletedTask;
-            return dashboardData;
+            _logger.LogInformation("График успешно экспортирован: {OutputPath}", outputPath);
+            return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Ошибка подготовки данных дашборда");
-            return dashboardData;
+            _logger.LogError(ex, "Ошибка экспорта графика в изображение: {OutputPath}", outputPath);
+            return false;
         }
     }
 
+    #endregion
+
+    #region Private Implementation Methods
+
     /// <summary>
-    /// Подготавливает кривые норм для графика
-    /// Соответствует _add_norm_curves из Python PlotBuilder
+    /// Подготавливает кривые норм - аналог Python _add_norm_curves
     /// </summary>
     private async Task<IEnumerable<ChartSeries>> PrepareNormCurvesAsync(
-        Dictionary<string, InterpolationFunction> normFunctions,
+        Dictionary<string, InterpolationFunction> normFunctions, 
         string? specificNormId)
     {
         var series = new List<ChartSeries>();
@@ -347,60 +326,39 @@ public class VisualizationDataService : IVisualizationDataService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Ошибка интерполяции кривой нормы {NormId}", normId);
+            _logger.LogError(ex, "Ошибка интерполяции нормы {NormId}", normId);
             return null;
         }
     }
 
     /// <summary>
-    /// Подготавливает точки маршрутов для отображения на графике
-    /// Соответствует _add_route_points из Python PlotBuilder
+    /// Подготавливает точки маршрутов - аналог Python _add_route_points
     /// </summary>
-    private IEnumerable<ChartSeries> PrepareRoutePoints(List<Route> routes)
+    private IEnumerable<ChartSeries> PrepareRoutePoints(IList<Route> routes)
     {
         var series = new List<ChartSeries>();
 
-        var validRoutes = routes.Where(r => 
-            r.AxleLoad.HasValue && 
-            r.FactUd.HasValue && 
-            r.AxleLoad > 0 && 
-            r.FactUd > 0
-        ).ToList();
-
-        if (!validRoutes.Any())
-        {
-            _logger.LogTrace("Нет валидных маршрутов для отображения точек");
-            return series;
-        }
-
-        // Группируем по статусам для цветового кодирования
-        var statusGroups = validRoutes
+        // Группируем маршруты по статусам отклонений для цветового кодирования
+        var statusGroups = routes
             .Where(r => !string.IsNullOrEmpty(r.Status))
             .GroupBy(r => r.Status!)
-            .OrderBy(g => g.Key)
             .ToList();
 
         foreach (var group in statusGroups)
         {
             var groupRoutes = group.ToList();
-            var xValues = groupRoutes.Select(r => r.AxleLoad!.Value).ToArray();
-            var yValues = groupRoutes.Select(r => r.FactUd!.Value).ToArray();
-            
             var color = StatusColors.TryGetValue(group.Key, out var statusColor) 
                 ? statusColor 
-                : "#808080"; // Gray для неизвестных статусов
+                : StatusColors["default"];
 
             series.Add(new ChartSeries(
-                Name: $"{group.Key} ({group.Count()})",
-                XValues: xValues,
-                YValues: yValues,
+                Name: $"Маршруты: {group.Key} ({groupRoutes.Count})",
+                XValues: groupRoutes.Select(r => r.MechanicalWork).ToArray(),
+                YValues: groupRoutes.Select(r => r.ElectricConsumption).ToArray(),
                 Color: color,
                 Type: "scatter"
             ));
         }
-
-        _logger.LogTrace("Подготовлено {SeriesCount} серий точек маршрутов ({TotalPoints} точек)", 
-            series.Count, validRoutes.Count);
 
         return series;
     }
@@ -410,216 +368,376 @@ public class VisualizationDataService : IVisualizationDataService
     /// </summary>
     private Dictionary<string, object> CreateMetadata(
         string sectionName, 
-        List<Route> routes, 
-        int normFunctionCount,
+        IList<Route> routes, 
+        int normFunctionsCount, 
         string? specificNormId)
     {
-        var routesWithDeviations = routes.Where(r => r.DeviationPercent.HasValue).ToList();
-        
+        var avgDeviation = routes.Where(r => r.DeviationPercent.HasValue)
+                                .Average(r => r.DeviationPercent!.Value);
+
         var metadata = new Dictionary<string, object>
         {
             ["SectionName"] = sectionName,
-            ["TotalRoutes"] = routes.Count,
-            ["RoutesWithDeviations"] = routesWithDeviations.Count,
-            ["NormFunctions"] = normFunctionCount,
-            ["SpecificNormId"] = specificNormId ?? "все",
+            ["RouteCount"] = routes.Count,
+            ["NormFunctionsCount"] = normFunctionsCount,
+            ["AverageDeviation"] = avgDeviation,
             ["CreatedAt"] = DateTime.UtcNow,
-            ["DataQuality"] = CalculateDataQuality(routes)
+            ["Title"] = CreatePlotTitle(sectionName, specificNormId),
+            ["Subtitle"] = $"Анализ {routes.Count} маршрутов"
         };
 
-        if (routesWithDeviations.Any())
+        if (!string.IsNullOrEmpty(specificNormId))
         {
-            var deviations = routesWithDeviations.Select(r => r.DeviationPercent!.Value).ToList();
-            
-            metadata["AverageDeviation"] = Math.Round(deviations.Average(), 2);
-            metadata["MinDeviation"] = deviations.Min();
-            metadata["MaxDeviation"] = deviations.Max();
-            metadata["StandardDeviation"] = Math.Round(CalculateStandardDeviation(deviations), 2);
+            metadata["SpecificNormId"] = specificNormId;
         }
+
+        // Статистика по участкам
+        var sectionStats = routes.SelectMany(r => r.SectionNames)
+                                .GroupBy(s => s)
+                                .ToDictionary(g => g.Key, g => g.Count());
+        metadata["SectionStatistics"] = sectionStats;
 
         return metadata;
     }
 
     /// <summary>
-    /// Вычисляет качество данных (процент маршрутов с полными данными)
+    /// Создает заголовок графика
     /// </summary>
-    private decimal CalculateDataQuality(List<Route> routes)
+    private string CreatePlotTitle(string sectionName, string? specificNormId)
     {
-        if (!routes.Any()) return 0;
-
-        var completeRoutes = routes.Count(r => 
-            !string.IsNullOrEmpty(r.RouteNumber) &&
-            !string.IsNullOrEmpty(r.SectionName) &&
-            !string.IsNullOrEmpty(r.NormNumber) &&
-            r.AxleLoad.HasValue &&
-            r.FactConsumption.HasValue &&
-            r.AxleLoad > 0 &&
-            r.FactConsumption > 0
-        );
-
-        return Math.Round((decimal)completeRoutes / routes.Count * 100, 1);
-    }
-
-    /// <summary>
-    /// Вычисляет стандартное отклонение
-    /// </summary>
-    private decimal CalculateStandardDeviation(List<decimal> values)
-    {
-        if (values.Count <= 1) return 0;
-        
-        var mean = values.Average();
-        var variance = values.Sum(x => (decimal)Math.Pow((double)(x - mean), 2)) / (values.Count - 1);
-        
-        return (decimal)Math.Sqrt((double)variance);
-    }
-
-    /// <summary>
-    /// Создает данные для экспорта графика
-    /// </summary>
-    public async Task<ExportData> PrepareExportDataAsync(
-        VisualizationData visualizationData, 
-        ExportFormat format)
-    {
-        _logger.LogDebug("Подготавливаем данные для экспорта в формате {Format}", format);
-
-        var exportData = new ExportData
+        var title = $"Анализ норм расхода: {sectionName}";
+        if (!string.IsNullOrEmpty(specificNormId))
         {
-            Format = format,
-            CreatedAt = DateTime.UtcNow,
-            Data = new Dictionary<string, object>()
+            title += $" (норма {specificNormId})";
+        }
+        return title;
+    }
+
+    #endregion
+
+    #region CHAT 6: Image Export Implementation
+
+    /// <summary>
+    /// Создает OxyPlot модель для экспорта - объединяет dual subplot в один
+    /// </summary>
+    private PlotModel CreateExportPlotModel(VisualizationData visualizationData, PlotExportOptions options)
+    {
+        var plotModel = new PlotModel
+        {
+            Title = visualizationData.Metadata.GetValueOrDefault("Title", "График анализа норм")?.ToString(),
+            Background = OxyColor.FromArgb(255, 
+                options.BackgroundColor.R, 
+                options.BackgroundColor.G, 
+                options.BackgroundColor.B),
+            TitleFontSize = 16,
+            TitleFontWeight = FontWeights.Bold
         };
 
-        try
+        // Создаем оси для объединенного графика
+        var xAxis = new LinearAxis
         {
-            switch (format)
+            Position = AxisPosition.Bottom,
+            Title = visualizationData.NormCurves.Axes.XAxisTitle,
+            TitleFontSize = 12,
+            MajorGridlineStyle = LineStyle.Solid,
+            MajorGridlineColor = OxyColor.FromArgb(40, 0, 0, 0)
+        };
+
+        var yAxisLeft = new LinearAxis
+        {
+            Position = AxisPosition.Left,
+            Title = visualizationData.NormCurves.Axes.YAxisTitle,
+            TitleFontSize = 12,
+            MajorGridlineStyle = LineStyle.Solid,
+            MajorGridlineColor = OxyColor.FromArgb(40, 0, 0, 0),
+            Key = "LeftAxis"
+        };
+
+        var yAxisRight = new LinearAxis
+        {
+            Position = AxisPosition.Right,
+            Title = "Отклонение от нормы, %",
+            TitleFontSize = 12,
+            Key = "RightAxis"
+        };
+
+        plotModel.Axes.Add(xAxis);
+        plotModel.Axes.Add(yAxisLeft);
+        plotModel.Axes.Add(yAxisRight);
+
+        // Добавляем кривые норм - аналог Python norm curves
+        foreach (var normSeries in visualizationData.NormCurves.Series)
+        {
+            var lineSeries = new LineSeries
             {
-                case ExportFormat.Csv:
-                    exportData.Data["CsvData"] = await PrepareCsvExportAsync(visualizationData);
+                Title = normSeries.Name,
+                Color = OxyColor.Parse(normSeries.Color),
+                StrokeThickness = 2,
+                LineStyle = LineStyle.Solid,
+                YAxisKey = "LeftAxis"
+            };
+
+            for (int i = 0; i < normSeries.XValues.Length; i++)
+            {
+                lineSeries.Points.Add(new DataPoint((double)normSeries.XValues[i], (double)normSeries.YValues[i]));
+            }
+
+            plotModel.Series.Add(lineSeries);
+        }
+
+        // Добавляем точки маршрутов - аналог Python route points
+        foreach (var routeSeries in visualizationData.RoutePoints.Series)
+        {
+            var scatterSeries = new ScatterSeries
+            {
+                Title = routeSeries.Name,
+                MarkerType = MarkerType.Circle,
+                MarkerSize = 4,
+                MarkerFill = OxyColor.Parse(routeSeries.Color),
+                MarkerStroke = OxyColor.Parse(routeSeries.Color),
+                YAxisKey = "LeftAxis"
+            };
+
+            for (int i = 0; i < routeSeries.XValues.Length; i++)
+            {
+                scatterSeries.Points.Add(new ScatterPoint((double)routeSeries.XValues[i], (double)routeSeries.YValues[i]));
+            }
+
+            plotModel.Series.Add(scatterSeries);
+        }
+
+        // Настраиваем легенду если требуется
+        if (options.IncludeLegend)
+        {
+            plotModel.LegendTitle = "Легенда";
+            plotModel.LegendPosition = LegendPosition.RightTop;
+            plotModel.LegendPlacement = LegendPlacement.Outside;
+            plotModel.LegendOrientation = LegendOrientation.Vertical;
+        }
+
+        return plotModel;
+    }
+
+    /// <summary>
+    /// Экспортирует OxyPlot модель в файл изображения
+    /// </summary>
+    private async Task ExportPlotModelToFileAsync(PlotModel plotModel, string outputPath, PlotExportOptions options)
+    {
+        await Task.Run(() =>
+        {
+            var extension = Path.GetExtension(outputPath).ToLower();
+            
+            switch (extension)
+            {
+                case ".png":
+                    var pngExporter = new PngExporter 
+                    { 
+                        Width = options.Width, 
+                        Height = options.Height,
+                        Resolution = options.Resolution,
+                        Background = OxyColor.FromArgb(255, 
+                            options.BackgroundColor.R, 
+                            options.BackgroundColor.G, 
+                            options.BackgroundColor.B)
+                    };
+                    pngExporter.ExportToFile(plotModel, outputPath);
                     break;
                     
-                case ExportFormat.Json:
-                    exportData.Data["JsonData"] = visualizationData;
+                case ".jpg":
+                case ".jpeg":
+                    // Конвертируем PNG в JPEG так как OxyPlot не поддерживает прямой JPEG export
+                    var tempPngPath = Path.ChangeExtension(outputPath, ".png");
+                    var jpegPngExporter = new PngExporter 
+                    { 
+                        Width = options.Width, 
+                        Height = options.Height,
+                        Resolution = options.Resolution
+                    };
+                    jpegPngExporter.ExportToFile(plotModel, tempPngPath);
+                    
+                    // Конвертируем PNG в JPEG
+                    ConvertPngToJpeg(tempPngPath, outputPath, 90); // 90% качество
+                    File.Delete(tempPngPath); // Удаляем временный PNG
                     break;
                     
-                case ExportFormat.Image:
-                    exportData.Data["ImageSettings"] = PrepareImageExportSettings(visualizationData);
+                case ".svg":
+                    var svgExporter = new SvgExporter 
+                    { 
+                        Width = options.Width, 
+                        Height = options.Height 
+                    };
+                    svgExporter.ExportToFile(plotModel, outputPath);
+                    break;
+                    
+                case ".pdf":
+                    var pdfExporter = new PdfExporter 
+                    { 
+                        Width = options.Width, 
+                        Height = options.Height 
+                    };
+                    pdfExporter.ExportToFile(plotModel, outputPath);
                     break;
                     
                 default:
-                    throw new ArgumentException($"Неподдерживаемый формат экспорта: {format}");
+                    throw new NotSupportedException($"Формат файла {extension} не поддерживается для экспорта");
             }
-
-            return exportData;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Ошибка подготовки данных для экспорта в формате {Format}", format);
-            exportData.Data["Error"] = ex.Message;
-            return exportData;
-        }
+        });
     }
 
     /// <summary>
-    /// Подготавливает данные для CSV экспорта
+    /// Конвертирует PNG в JPEG с заданным качеством
     /// </summary>
-    private async Task<string> PrepareCsvExportAsync(VisualizationData visualizationData)
+    private void ConvertPngToJpeg(string pngPath, string jpegPath, long quality)
     {
-        var csv = new List<string> { "Series,X,Y,Color,Type" };
+        using var image = Image.FromFile(pngPath);
+        var jpegEncoder = GetEncoder(System.Drawing.Imaging.ImageFormat.Jpeg);
+        var qualityParams = new EncoderParameters(1);
+        var qualityParam = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, quality);
+        qualityParams.Param[0] = qualityParam;
+        
+        image.Save(jpegPath, jpegEncoder, qualityParams);
+    }
 
-        // Экспортируем все серии данных
-        foreach (var series in visualizationData.NormCurves.Series.Concat(visualizationData.RoutePoints.Series))
+    /// <summary>
+    /// Получает JPEG encoder для конвертации
+    /// </summary>
+    private ImageCodecInfo GetEncoder(System.Drawing.Imaging.ImageFormat format)
+    {
+        var codecs = ImageCodecInfo.GetImageDecoders();
+        foreach (var codec in codecs)
         {
-            for (int i = 0; i < series.XValues.Length; i++)
+            if (codec.FormatID == format.Guid)
             {
-                csv.Add($"{series.Name},{series.XValues[i]},{series.YValues[i]},{series.Color},{series.Type}");
+                return codec;
             }
         }
-
-        await Task.CompletedTask;
-        return string.Join("\n", csv);
+        throw new NotSupportedException("JPEG encoder не найден");
     }
 
     /// <summary>
-    /// Подготавливает настройки для экспорта изображения
+    /// Конвертирует словарь норм в InterpolationFunction для совместимости
     /// </summary>
-    private Dictionary<string, object> PrepareImageExportSettings(VisualizationData visualizationData)
+    private Dictionary<string, InterpolationFunction> ConvertToInterpolationFunctions(Dictionary<string, object> normFunctions)
     {
-        return new Dictionary<string, object>
+        var result = new Dictionary<string, InterpolationFunction>();
+        
+        foreach (var kvp in normFunctions)
         {
-            ["Width"] = 1200,
-            ["Height"] = 800,
-            ["DPI"] = 300,
-            ["Format"] = "PNG",
-            ["Title"] = visualizationData.Metadata.ContainsKey("SectionName") 
-                ? $"Анализ участка: {visualizationData.Metadata["SectionName"]}"
-                : "Анализ норм расхода",
-            ["SeriesCount"] = visualizationData.NormCurves.Series.Count() + visualizationData.RoutePoints.Series.Count()
-        };
+            if (kvp.Value is Dictionary<string, object> normData)
+            {
+                var points = normData.GetValueOrDefault("points", new List<NormPoint>()) as IEnumerable<NormPoint>;
+                var normType = normData.GetValueOrDefault("norm_type", "Нажатие") as string;
+                var description = normData.GetValueOrDefault("description", kvp.Key) as string;
+                
+                if (points?.Any() == true)
+                {
+                    var pointsList = points.ToList();
+                    var interpolationFunction = new InterpolationFunction
+                    {
+                        Id = kvp.Key,
+                        NormType = normType ?? "Нажатие",
+                        Description = description ?? kvp.Key,
+                        XValues = pointsList.Select(p => p.X).ToArray(),
+                        YValues = pointsList.Select(p => p.Y).ToArray()
+                    };
+                    
+                    result[kvp.Key] = interpolationFunction;
+                }
+            }
+        }
+        
+        return result;
     }
+
+    #endregion
+}
+
+#region Supporting Classes and Enums
+
+/// <summary>
+/// Структура данных для визуализации - аналог Python visualization data structure
+/// </summary>
+public class VisualizationData
+{
+    public ChartData NormCurves { get; set; } = new();
+    public ChartData RoutePoints { get; set; } = new();
+    public ChartData DeviationAnalysis { get; set; } = new();
+    public Dictionary<string, object> Metadata { get; set; } = new();
 }
 
 /// <summary>
-/// Данные дашборда для обзорной визуализации
+/// Данные для построения графиков
 /// </summary>
-public class DashboardData
+public class ChartData
 {
-    public int TotalRoutes { get; set; }
-    public int AnalyzedRoutes { get; set; }
-    public decimal AverageDeviation { get; set; }
-    public decimal MinDeviation { get; set; }
-    public decimal MaxDeviation { get; set; }
-    public Dictionary<string, int> StatusDistribution { get; set; } = new();
-    public List<SectionSummary> TopSectionsByDeviation { get; set; } = new();
-    public List<LocomotiveSummary> TopLocomotivesByDeviation { get; set; } = new();
-    public NormStatistics NormStatistics { get; set; } = new();
+    public IEnumerable<ChartSeries> Series { get; set; } = Array.Empty<ChartSeries>();
+    public ChartAxes Axes { get; set; } = new("X", "Y");
 }
 
 /// <summary>
-/// Сводка по участку
+/// Серия данных для графика
 /// </summary>
-public class SectionSummary
+public record ChartSeries(
+    string Name,
+    decimal[] XValues,
+    decimal[] YValues,
+    string Color,
+    string Type);
+
+/// <summary>
+/// Информация об осях графика
+/// </summary>
+public record ChartAxes(string XAxisTitle, string YAxisTitle);
+
+/// <summary>
+/// Опции экспорта изображения графика - CHAT 6 NEW
+/// </summary>
+public class PlotExportOptions
 {
-    public string SectionName { get; set; } = string.Empty;
-    public int RouteCount { get; set; }
-    public decimal AverageDeviation { get; set; }
+    public int Width { get; set; } = 1200;
+    public int Height { get; set; } = 800;
+    public int Resolution { get; set; } = 150;
+    public ImageFormat Format { get; set; } = ImageFormat.PNG;
+    public bool IncludeLegend { get; set; } = true;
+    public bool IncludeTitle { get; set; } = true;
+    public Color BackgroundColor { get; set; } = Color.White;
 }
 
 /// <summary>
-/// Сводка по локомотиву
+/// Форматы экспорта изображений - CHAT 6 NEW
 /// </summary>
-public class LocomotiveSummary
+public enum ImageFormat
 {
-    public string LocomotiveId { get; set; } = string.Empty;
-    public int RouteCount { get; set; }
-    public decimal AverageDeviation { get; set; }
+    PNG,
+    JPEG,
+    SVG,
+    PDF
 }
 
 /// <summary>
-/// Статистика норм
+/// Функция интерполяции для норм - аналог Python interpolation function
 /// </summary>
-public class NormStatistics
+public class InterpolationFunction
 {
-    public int TotalNorms { get; set; }
-    public Dictionary<string, int> NormsByType { get; set; } = new();
+    public string Id { get; set; } = string.Empty;
+    public string NormType { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public decimal[] XValues { get; set; } = Array.Empty<decimal>();
+    public decimal[] YValues { get; set; } = Array.Empty<decimal>();
 }
 
 /// <summary>
-/// Данные для экспорта
+/// Статусы отклонений - константы для цветового кодирования
 /// </summary>
-public class ExportData
+public static class DeviationStatus
 {
-    public ExportFormat Format { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public Dictionary<string, object> Data { get; set; } = new();
+    public const string EconomyStrong = "Сильная экономия";
+    public const string EconomyMedium = "Средняя экономия";
+    public const string EconomyWeak = "Слабая экономия";
+    public const string Normal = "В норме";
+    public const string OverrunWeak = "Слабый перерасход";
+    public const string OverrunMedium = "Средний перерасход";
+    public const string OverrunStrong = "Сильный перерасход";
 }
 
-/// <summary>
-/// Форматы экспорта
-/// </summary>
-public enum ExportFormat
-{
-    Csv,
-    Json,
-    Image,
-    Excel
-}
+#endregion

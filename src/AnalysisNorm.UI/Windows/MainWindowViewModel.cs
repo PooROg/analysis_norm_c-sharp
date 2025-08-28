@@ -82,10 +82,10 @@ public class MainWindowViewModel : INotifyPropertyChanged
         // Инициализируем коллекции - аналог Python instance variables
         Sections = new ObservableCollection<string>();
         NormsWithCounts = new ObservableCollection<string>();
-        
+
         // Устанавливаем начальное состояние UI
         StatisticsText = "Статистика будет отображена\nпосле выполнения анализа.\n\nДля начала:\n1. Выберите участок\n2. Настройте фильтры\n3. Нажмите 'Выполнить анализ'";
-        
+
         // Инициализируем команды - аналог Python callback connections
         InitializeCommands();
 
@@ -378,10 +378,10 @@ public class MainWindowViewModel : INotifyPropertyChanged
             LoadingMessage = "Загрузка коэффициентов локомотивов...";
             LoadingProgress = 50;
             _locomotiveCoefficients = await _locomotiveFilterService.LoadCoefficientsAsync();
-            
+
             LoadingMessage = "Настройка интерфейса...";
             LoadingProgress = 90;
-            
+
             // Добавляем приветственное сообщение в лог - аналог Python logger.info("GUI инициализирован")
             AppendToLog("Анализатор норм расхода электроэнергии РЖД запущен");
             AppendToLog("Готов к работе. Выберите HTML файлы для анализа.");
@@ -415,7 +415,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
         try
         {
             var filePaths = parameter as string[] ?? throw new ArgumentException("Неверный параметр файлов");
-            
+
             IsLoading = true;
             LoadingMessage = "Загрузка HTML файлов маршрутов...";
             LoadingProgress = 0;
@@ -428,7 +428,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
             {
                 LoadingProgress = (i + 1.0) / filePaths.Length * 80; // 80% на загрузку файлов
                 LoadingMessage = $"Обработка файла {i + 1} из {filePaths.Length}...";
-                
+
                 var fileRoutes = await _htmlRouteProcessor.ProcessHtmlFileAsync(filePaths[i]);
                 routes.AddRange(fileRoutes);
             }
@@ -436,7 +436,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
             // Обновляем состояние - аналог Python _update_after_routes_loaded
             LoadingMessage = "Обновление интерфейса...";
             LoadingProgress = 90;
-            
+
             _loadedRoutes = routes;
             await UpdateSectionsAsync();
 
@@ -465,7 +465,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
         try
         {
             var filePaths = parameter as string[] ?? throw new ArgumentException("Неверный параметр файлов");
-            
+
             IsLoading = true;
             LoadingMessage = "Загрузка HTML файлов норм...";
             LoadingProgress = 0;
@@ -478,14 +478,14 @@ public class MainWindowViewModel : INotifyPropertyChanged
             {
                 LoadingProgress = (i + 1.0) / filePaths.Length * 80;
                 LoadingMessage = $"Обработка файла норм {i + 1} из {filePaths.Length}...";
-                
+
                 var fileNorms = await _htmlNormProcessor.ProcessHtmlFileAsync(filePaths[i]);
                 norms.AddRange(fileNorms);
             }
 
             LoadingMessage = "Валидация норм...";
             LoadingProgress = 90;
-            
+
             _loadedNorms = norms;
             await UpdateNormsAndSectionInfoAsync();
 
@@ -529,7 +529,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
             // Фильтруем маршруты по участку и настройкам
             LoadingMessage = "Фильтрация маршрутов...";
             LoadingProgress = 20;
-            
+
             var filteredRoutes = _loadedRoutes
                 .Where(r => r.SectionNames.Contains(SelectedSection))
                 .Where(r => !SingleSectionOnly || r.SectionNames.Count == 1)
@@ -538,16 +538,16 @@ public class MainWindowViewModel : INotifyPropertyChanged
             // Выполняем анализ данных
             LoadingMessage = "Анализ данных...";
             LoadingProgress = 60;
-            
+
             var analysisResult = await _dataAnalysisService.AnalyzeRoutesAsync(
-                filteredRoutes, 
-                SelectedSection, 
+                filteredRoutes,
+                SelectedSection,
                 SelectedNorm != "Все нормы" ? ExtractNormId(SelectedNorm) : null);
 
             // Подготавливаем данные для визуализации
             LoadingMessage = "Подготовка визуализации...";
             LoadingProgress = 90;
-            
+
             await _visualizationService.PrepareVisualizationDataAsync(analysisResult);
 
             // Обновляем статистику в UI - аналог Python update_statistics
@@ -622,14 +622,14 @@ public class MainWindowViewModel : INotifyPropertyChanged
 
                 // Подсчитываем нормы для данного участка
                 var normCounts = new Dictionary<string, int>();
-                
+
                 if (_loadedNorms.Any())
                 {
                     foreach (var norm in _loadedNorms)
                     {
-                        var matchingRoutes = sectionRoutes.Count(r => 
+                        var matchingRoutes = sectionRoutes.Count(r =>
                             r.NormId == norm.Id || r.NormId?.ToString() == norm.Id);
-                        
+
                         if (matchingRoutes > 0)
                             normCounts[norm.Id] = matchingRoutes;
                     }
@@ -650,13 +650,13 @@ public class MainWindowViewModel : INotifyPropertyChanged
                     // Обновляем информационные сообщения
                     var totalRoutes = _loadedRoutes.Count(r => r.SectionNames.Contains(SelectedSection));
                     var filteredRoutes = sectionRoutes.Count;
-                    
+
                     SectionInfo = $"Всего маршрутов: {totalRoutes}";
                     if (SingleSectionOnly && filteredRoutes != totalRoutes)
                         SectionInfo += $" | После фильтра: {filteredRoutes}";
 
-                    FilterInfo = SingleSectionOnly ? 
-                        "Применен фильтр: только маршруты с одним участком" : 
+                    FilterInfo = SingleSectionOnly ?
+                        "Применен фильтр: только маршруты с одним участком" :
                         "";
 
                     AppendToLog($"Участок '{SelectedSection}': найдено {totalRoutes} маршрутов, {normCounts.Count} норм");
@@ -677,13 +677,13 @@ public class MainWindowViewModel : INotifyPropertyChanged
     {
         var timestamp = DateTime.Now.ToString("HH:mm:ss");
         var logEntry = $"[{timestamp}] {message}";
-        
+
         // Обновляем UI в главном потоке
         System.Windows.Application.Current.Dispatcher.Invoke(() =>
         {
             LogText += logEntry + Environment.NewLine;
         });
-        
+
         _logger.LogInformation(message);
     }
 
@@ -694,7 +694,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
     {
         if (string.IsNullOrEmpty(normText) || normText == "Все нормы")
             return null;
-            
+
         var match = System.Text.RegularExpressions.Regex.Match(normText, @"Норма (\d+)");
         return match.Success ? match.Groups[1].Value : null;
     }
@@ -703,16 +703,16 @@ public class MainWindowViewModel : INotifyPropertyChanged
 
     #region Условия выполнения команд - аналоги Python button states
 
-    private bool CanAnalyze() => 
-        _loadedRoutes.Any() && 
-        !string.IsNullOrEmpty(SelectedSection) && 
+    private bool CanAnalyze() =>
+        _loadedRoutes.Any() &&
+        !string.IsNullOrEmpty(SelectedSection) &&
         !IsLoading;
 
-    private bool CanFilterLocomotives() => 
-        _locomotiveCoefficients.Any() && 
+    private bool CanFilterLocomotives() =>
+        _locomotiveCoefficients.Any() &&
         !IsLoading;
 
-    private void FilterLocomotives() 
+    private void FilterLocomotives()
     {
         try
         {
@@ -741,10 +741,10 @@ public class MainWindowViewModel : INotifyPropertyChanged
             if (dialogResult == true && filterWindow.DialogResult != null)
             {
                 var result = filterWindow.DialogResult;
-                
+
                 UseCoefficients = result.UseCoefficients;
                 ExcludeLowWork = result.ExcludeLowWork;
-                
+
                 // Обновляем информацию о примененном фильтре
                 FilterInfo = $"Выбрано локомотивов: {result.SelectedLocomotives.Count}";
                 if (result.UseCoefficients && result.Coefficients.Any())
@@ -753,7 +753,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
                 }
 
                 AppendToLog($"Применен фильтр локомотивов: выбрано {result.SelectedLocomotives.Count} локомотивов");
-                
+
                 // Автоматически перезапускаем анализ если участок выбран
                 if (!string.IsNullOrEmpty(SelectedSection))
                 {
@@ -792,7 +792,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
             info.AppendLine();
             info.AppendLine("ТЕКУЩИЕ ВОЗМОЖНОСТИ:");
             info.AppendLine("• Просмотр норм на интерактивных графиках");
-            info.AppendLine("• Загрузка норм из HTML файлов ЦОММ");  
+            info.AppendLine("• Загрузка норм из HTML файлов ЦОММ");
             info.AppendLine("• Валидация структуры норм");
             info.AppendLine("• Детальная информация о нормах");
             info.AppendLine();
@@ -846,7 +846,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
 
             // Подготавливаем данные норм для графика
             var normFunctions = new Dictionary<string, object>();
-            foreach (var norm in _loadedNorms.Where(n => 
+            foreach (var norm in _loadedNorms.Where(n =>
                 filteredRoutes.Any(r => r.NormId == n.Id || r.NormId?.ToString() == n.Id)))
             {
                 normFunctions[norm.Id] = new Dictionary<string, object>
@@ -884,23 +884,201 @@ public class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>
+    /// Информация о хранилище норм - аналог Python _show_norm_storage_info
+    /// </summary>
     private async Task ShowNormStorageInfoAsync(object? parameter)
     {
-        // Реализация информации о хранилище - аналог Python _show_norm_storage_info
-        AppendToLog("Загрузка информации о хранилище норм...");
+        try
+        {
+            AppendToLog("Загрузка информации о хранилище норм...");
+
+            var storageInfo = new StringBuilder();
+            storageInfo.AppendLine("ИНФОРМАЦИЯ О ХРАНИЛИЩЕ НОРМ");
+            storageInfo.AppendLine("=".PadRight(50, '='));
+            storageInfo.AppendLine();
+
+            storageInfo.AppendLine($"Загружено норм: {_loadedNorms.Count}");
+            storageInfo.AppendLine($"Общее количество точек: {_loadedNorms.Sum(n => n.Points?.Count ?? 0)}");
+
+            if (_loadedNorms.Any())
+            {
+                var normsGrouped = _loadedNorms.GroupBy(n => n.Type ?? "Неизвестно");
+                storageInfo.AppendLine();
+                storageInfo.AppendLine("По типам норм:");
+                foreach (var group in normsGrouped)
+                {
+                    storageInfo.AppendLine($"  {group.Key}: {group.Count()}");
+                }
+
+                storageInfo.AppendLine();
+                storageInfo.AppendLine($"Средняя длина описания: {_loadedNorms.Average(n => (n.Description ?? "").Length):F1} символов");
+                storageInfo.AppendLine($"Среднее количество точек: {_loadedNorms.Average(n => n.Points?.Count ?? 0):F1}");
+            }
+            else
+            {
+                storageInfo.AppendLine();
+                storageInfo.AppendLine("Хранилище норм пусто. Загрузите HTML файлы норм для анализа.");
+            }
+
+            ShowInfoDialog("Информация о хранилище норм", storageInfo.ToString());
+            AppendToLog("Показана информация о хранилище норм");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ошибка показа информации о хранилище норм");
+            AppendToLog($"Ошибка хранилища норм: {ex.Message}");
+        }
     }
 
+    /// <summary>
+    /// НОВЫЙ МЕТОД: Валидация норм - аналог Python _validate_norms
+    /// </summary>
     private async Task ValidateNormsAsync(object? parameter)
     {
-        // Реализация валидации норм - аналог Python _validate_norms
-        AppendToLog("Валидация норм...");
+        try
+        {
+            if (!_loadedNorms.Any())
+            {
+                AppendToLog("Предупреждение: Нет норм для валидации");
+                return;
+            }
+
+            IsLoading = true;
+            LoadingMessage = "Валидация норм...";
+            LoadingProgress = 0;
+
+            var validationResults = new StringBuilder();
+            validationResults.AppendLine("РЕЗУЛЬТАТЫ ВАЛИДАЦИИ НОРМ");
+            validationResults.AppendLine("=".PadRight(40, '='));
+            validationResults.AppendLine();
+
+            var validNorms = 0;
+            var invalidNorms = 0;
+            var warnings = 0;
+
+            foreach (var norm in _loadedNorms)
+            {
+                LoadingProgress = (double)validNorms / _loadedNorms.Count * 100;
+
+                // Валидация нормы
+                var issues = new List<string>();
+
+                if (string.IsNullOrEmpty(norm.Id))
+                    issues.Add("Отсутствует ID нормы");
+
+                if (norm.Points?.Any() != true)
+                    issues.Add("Нет точек интерполяции");
+
+                if (norm.Points?.Count < 2)
+                    issues.Add("Недостаточно точек для интерполяции");
+
+                if (norm.Points?.Any(p => p.X <= 0 || p.Y <= 0) == true)
+                    issues.Add("Найдены некорректные значения точек");
+
+                if (!issues.Any())
+                {
+                    validNorms++;
+                }
+                else
+                {
+                    invalidNorms++;
+                    validationResults.AppendLine($"❌ Норма {norm.Id}:");
+                    foreach (var issue in issues)
+                    {
+                        validationResults.AppendLine($"   • {issue}");
+                    }
+                    validationResults.AppendLine();
+                }
+
+                // Предупреждения
+                if (norm.Points?.Count > 100)
+                {
+                    warnings++;
+                    validationResults.AppendLine($"⚠️ Норма {norm.Id}: Слишком много точек ({norm.Points.Count})");
+                }
+            }
+
+            validationResults.Insert(0, $"✅ Валидные нормы: {validNorms}\n");
+            validationResults.Insert(1, $"❌ Невалидные нормы: {invalidNorms}\n");
+            validationResults.Insert(2, $"⚠️ Предупреждения: {warnings}\n\n");
+
+            LoadingProgress = 100;
+
+            ShowInfoDialog("Результаты валидации норм", validationResults.ToString());
+            AppendToLog($"Валидация завершена: {validNorms} валидных, {invalidNorms} невалидных норм");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ошибка валидации норм");
+            AppendToLog($"Ошибка валидации: {ex.Message}");
+        }
+        finally
+        {
+            IsLoading = false;
+            LoadingMessage = string.Empty;
+            LoadingProgress = 0;
+        }
     }
 
+    /// <summary>
+    /// Показывает статистику маршрутов - аналог Python _show_routes_statistics
+    /// </summary>
     private async Task ShowRoutesStatisticsAsync(object? parameter)
     {
-        // Реализация статистики маршрутов - аналог Python _show_routes_statistics
-        AppendToLog("Подготовка статистики маршрутов...");
+        try
+        {
+            if (!_loadedRoutes.Any())
+            {
+                AppendToLog("Предупреждение: Нет данных для статистики");
+                return;
+            }
+
+            IsLoading = true;
+            LoadingMessage = "Подготовка статистики маршрутов...";
+            LoadingProgress = 50;
+
+            // Фильтруем маршруты для статистики
+            var filteredRoutes = _loadedRoutes
+                .Where(r => string.IsNullOrEmpty(SelectedSection) || r.SectionNames.Contains(SelectedSection))
+                .Where(r => !SingleSectionOnly || r.SectionNames.Count == 1)
+                .ToList();
+
+            LoadingProgress = 100;
+
+            // Создаем ViewModel для окна статистики
+            var statsViewModel = new RouteStatisticsViewModel(
+                _loggerFactory.CreateLogger<RouteStatisticsViewModel>(),
+                filteredRoutes,
+                SelectedSection ?? "Все участки",
+                SingleSectionOnly
+            );
+
+            // Показываем окно статистики
+            var statsWindow = new RouteStatisticsWindow(statsViewModel)
+            {
+                Owner = System.Windows.Application.Current.MainWindow
+            };
+
+            statsWindow.Show();
+            AppendToLog($"Статистика показана: {filteredRoutes.Count} маршрутов, участок '{SelectedSection ?? "Все"}'");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ошибка показа статистики маршрутов");
+            AppendToLog($"Ошибка статистики: {ex.Message}");
+        }
+        finally
+        {
+            IsLoading = false;
+            LoadingMessage = string.Empty;
+            LoadingProgress = 0;
+        }
     }
+
+    /// <summary>
+    /// ИСПРАВЛЕНО: Экспорт в Excel с правильной сигнатурой сервиса
+    /// </summary>
 
     private async Task ExportExcelAsync(object? parameter)
     {
@@ -917,7 +1095,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
                 Title = "Экспорт в Excel",
                 Filter = "Excel файлы (*.xlsx)|*.xlsx|Все файлы (*.*)|*.*",
                 DefaultExt = "xlsx",
-                FileName = $"Анализ_{SelectedSection}_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx"
+                FileName = $"Анализ_{SelectedSection?.Replace(" ", "_") ?? "Все"}_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx"
             };
 
             if (dialog.ShowDialog() == true)
@@ -932,24 +1110,46 @@ public class MainWindowViewModel : INotifyPropertyChanged
                     .Where(r => !SingleSectionOnly || r.SectionNames.Count == 1)
                     .ToList();
 
+                LoadingProgress = 30;
+
+                // Создаем опции экспорта
+                var exportOptions = new ExportOptions
+                {
+                    IncludeFormatting = true,
+                    HighlightDeviations = true,
+                    IncludeStatistics = true,
+                    IncludeCharts = false // Пока без графиков в Excel
+                };
+
                 LoadingProgress = 50;
-                
-                // Выполняем экспорт через сервис - аналог Python _export_to_excel
-                var success = await _excelExportService.ExportRoutesToExcelAsync(dialog.FileName, exportRoutes);
+
+                // ИСПРАВЛЕНО: Правильная сигнатура вызова сервиса
+                var success = await _excelExportService.ExportRoutesToExcelAsync(
+                    exportRoutes,
+                    dialog.FileName,
+                    exportOptions);
 
                 LoadingProgress = 100;
 
                 if (success)
                 {
                     AppendToLog($"Данные экспортированы в Excel: {System.IO.Path.GetFileName(dialog.FileName)}");
-                    ShowInfoDialog("Экспорт завершен", 
+                    ShowInfoDialog("Экспорт завершен",
                         $"Данные успешно экспортированы в Excel!\n\n" +
                         $"Файл: {dialog.FileName}\n" +
-                        $"Маршрутов: {exportRoutes.Count}");
+                        $"Маршрутов: {exportRoutes.Count}\n" +
+                        $"Участок: {SelectedSection ?? "Все"}\n\n" +
+                        $"Включено:\n" +
+                        $"• Цветовая подсветка отклонений\n" +
+                        $"• Статистика по категориям\n" +
+                        $"• Форматирование таблиц");
                 }
                 else
                 {
                     AppendToLog("Ошибка: Не удалось экспортировать данные в Excel");
+                    ShowInfoDialog("Ошибка экспорта",
+                        "Произошла ошибка при экспорте данных в Excel.\n" +
+                        "Проверьте права доступа к файлу и повторите попытку.");
                 }
             }
         }
@@ -985,9 +1185,9 @@ public class MainWindowViewModel : INotifyPropertyChanged
             var dialog = new Microsoft.Win32.SaveFileDialog
             {
                 Title = "Экспорт графика",
-                Filter = "PNG изображения (*.png)|*.png|JPEG изображения (*.jpg)|*.jpg|PDF документы (*.pdf)|*.pdf",
+                Filter = "PNG изображения (*.png)|*.png|JPEG изображения (*.jpg)|*.jpg|SVG векторные (*.svg)|*.svg",
                 DefaultExt = "png",
-                FileName = $"График_{SelectedSection}_{DateTime.Now:yyyyMMdd_HHmmss}.png"
+                FileName = $"График_{SelectedSection?.Replace(" ", "_")}_{DateTime.Now:yyyyMMdd_HHmmss}.png"
             };
 
             if (dialog.ShowDialog() == true)
@@ -996,7 +1196,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
                 LoadingMessage = "Экспорт графика...";
                 LoadingProgress = 0;
 
-                // Подготавливаем данные для графика
+                // Фильтруем маршруты для графика
                 var filteredRoutes = _loadedRoutes
                     .Where(r => r.SectionNames.Contains(SelectedSection))
                     .Where(r => !SingleSectionOnly || r.SectionNames.Count == 1)
@@ -1004,29 +1204,50 @@ public class MainWindowViewModel : INotifyPropertyChanged
 
                 LoadingProgress = 30;
 
-                // Подготавливаем данные норм
+                // Подготавливаем данные норм для графика
                 var normFunctions = new Dictionary<string, object>();
-                foreach (var norm in _loadedNorms.Where(n => 
-                    filteredRoutes.Any(r => r.NormId == n.Id || r.NormId?.ToString() == n.Id)))
+                var relevantNorms = _loadedNorms.Where(n =>
+                    filteredRoutes.Any(r => r.NormId == n.Id || r.NormId?.ToString() == n.Id)).ToList();
+
+                foreach (var norm in relevantNorms)
                 {
                     normFunctions[norm.Id] = new Dictionary<string, object>
                     {
-                        ["points"] = norm.Points.ToList(),
-                        ["norm_type"] = norm.Type,
-                        ["description"] = norm.Description
+                        ["points"] = norm.Points?.ToList() ?? new List<NormPoint>(),
+                        ["norm_type"] = norm.Type ?? "Нажатие",
+                        ["description"] = norm.Description ?? $"Норма {norm.Id}"
                     };
                 }
 
                 LoadingProgress = 60;
 
-                // Экспортируем через VisualizationService - аналог Python _export_plot  
+                // ИСПРАВЛЕНО: Создаем специальные опции экспорта изображения  
+                var exportOptions = new PlotExportOptions
+                {
+                    Width = 1200,
+                    Height = 800,
+                    Resolution = 300, // DPI для качественного экспорта
+                    Format = Path.GetExtension(dialog.FileName).ToLower() switch
+                    {
+                        ".png" => ImageFormat.PNG,
+                        ".jpg" or ".jpeg" => ImageFormat.JPEG,
+                        ".svg" => ImageFormat.SVG,
+                        _ => ImageFormat.PNG
+                    },
+                    IncludeLegend = true,
+                    IncludeTitle = true,
+                    BackgroundColor = System.Drawing.Color.White
+                };
+
+                // Вызываем метод экспорта изображения через сервис визуализации
                 var success = await _visualizationService.ExportPlotToImageAsync(
                     dialog.FileName,
                     SelectedSection,
                     filteredRoutes,
                     normFunctions,
                     ExtractNormId(SelectedNorm),
-                    SingleSectionOnly
+                    SingleSectionOnly,
+                    exportOptions
                 );
 
                 LoadingProgress = 100;
@@ -1038,11 +1259,19 @@ public class MainWindowViewModel : INotifyPropertyChanged
                         $"График успешно экспортирован!\n\n" +
                         $"Файл: {dialog.FileName}\n" +
                         $"Участок: {SelectedSection}\n" +
-                        $"Маршрутов: {filteredRoutes.Count}");
+                        $"Маршрутов: {filteredRoutes.Count}\n" +
+                        $"Норм: {normFunctions.Count}\n\n" +
+                        $"Параметры изображения:\n" +
+                        $"• Размер: {exportOptions.Width}x{exportOptions.Height}\n" +
+                        $"• Разрешение: {exportOptions.Resolution} DPI\n" +
+                        $"• Формат: {exportOptions.Format}");
                 }
                 else
                 {
                     AppendToLog("Ошибка: Не удалось экспортировать график");
+                    ShowInfoDialog("Ошибка экспорта",
+                        "Произошла ошибка при экспорте графика.\n" +
+                        "Проверьте права доступа к файлу и повторите попытку.");
                 }
             }
         }
@@ -1180,7 +1409,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
             }
 
             var mainPanel = new DockPanel();
-            
+
             // Кнопка закрытия внизу
             var closeButton = new Button
             {
@@ -1209,14 +1438,14 @@ public class MainWindowViewModel : INotifyPropertyChanged
         try
         {
             AppendToLog("Завершение работы приложения...");
-            
+
             // Очистка ресурсов если необходимо
             _loadedRoutes.Clear();
             _loadedNorms.Clear();
             _locomotiveCoefficients.Clear();
-            
+
             await Task.Delay(500); // Пауза для завершения операций
-            
+
             _logger.LogInformation("Приложение корректно завершило работу");
         }
         catch (Exception ex)
@@ -1225,7 +1454,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
-    #endregion
+#endregion
 
     #region INotifyPropertyChanged Implementation
 
@@ -1245,4 +1474,29 @@ public class MainWindowViewModel : INotifyPropertyChanged
     }
 
     #endregion
+}
+
+/// <summary>
+/// Опции экспорта изображения графика
+/// </summary>
+public class PlotExportOptions
+{
+    public int Width { get; set; } = 1200;
+    public int Height { get; set; } = 800;
+    public int Resolution { get; set; } = 150;
+    public ImageFormat Format { get; set; } = ImageFormat.PNG;
+    public bool IncludeLegend { get; set; } = true;
+    public bool IncludeTitle { get; set; } = true;
+    public System.Drawing.Color BackgroundColor { get; set; } = System.Drawing.Color.White;
+}
+
+/// <summary>
+/// Форматы экспорта изображений
+/// </summary>
+public enum ImageFormat
+{
+    PNG,
+    JPEG,
+    SVG,
+    PDF
 }
