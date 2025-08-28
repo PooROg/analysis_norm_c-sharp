@@ -1,0 +1,118 @@
+<UserControl x:Class="AnalysisNorm.UI.Controls.FileSectionControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes">
+
+    <StackPanel>
+        <TextBlock Text="Файлы данных" 
+                   FontSize="16" FontWeight="SemiBold" 
+                   Margin="0,0,0,16"/>
+
+        <!-- HTML файлы маршрутов - аналог Python routes files row -->
+        <Grid Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="160"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0" 
+                       Text="HTML маршрутов:" 
+                       VerticalAlignment="Center"
+                       FontWeight="Medium"/>
+
+            <TextBlock Grid.Column="1"
+                       x:Name="RouteFilesLabel"
+                       Text="Не выбраны"
+                       VerticalAlignment="Center"
+                       Margin="8,0"
+                       Foreground="Gray"
+                       TextTrimming="CharacterEllipsis"
+                       ToolTip="{Binding RelativeSource={RelativeSource Self}, Path=Text}"/>
+
+            <Button Grid.Column="2"
+                    Content="Выбрать"
+                    Click="SelectRouteFiles_Click"
+                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                    Margin="4,0" Padding="12,4"/>
+
+            <Button Grid.Column="3"
+                    Content="Очистить"
+                    Click="ClearRouteFiles_Click"
+                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                    Margin="4,0" Padding="12,4"/>
+
+            <Button Grid.Column="4"
+                    x:Name="LoadRoutesButton"
+                    Content="Загрузить"
+                    Command="{Binding DataContext.LoadRoutesCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                    CommandParameter="{Binding RouteFiles, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                    Style="{StaticResource MaterialDesignRaisedButton}"
+                    IsEnabled="False"
+                    Margin="4,0" Padding="12,4"/>
+        </Grid>
+
+        <!-- HTML файлы норм - аналог Python norms files row -->
+        <Grid Margin="0,0,0,16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="160"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0" 
+                       Text="HTML норм:" 
+                       VerticalAlignment="Center"
+                       FontWeight="Medium"/>
+
+            <TextBlock Grid.Column="1"
+                       x:Name="NormFilesLabel"
+                       Text="Не выбраны"
+                       VerticalAlignment="Center"
+                       Margin="8,0"
+                       Foreground="Gray"
+                       TextTrimming="CharacterEllipsis"
+                       ToolTip="{Binding RelativeSource={RelativeSource Self}, Path=Text}"/>
+
+            <Button Grid.Column="2"
+                    Content="Выбрать"
+                    Click="SelectNormFiles_Click"
+                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                    Margin="4,0" Padding="12,4"/>
+
+            <Button Grid.Column="3"
+                    Content="Очистить"
+                    Click="ClearNormFiles_Click"
+                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                    Margin="4,0" Padding="12,4"/>
+
+            <Button Grid.Column="4"
+                    x:Name="LoadNormsButton"
+                    Content="Загрузить"
+                    Command="{Binding DataContext.LoadNormsCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                    CommandParameter="{Binding NormFiles, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                    Style="{StaticResource MaterialDesignRaisedButton}"
+                    IsEnabled="False"
+                    Margin="4,0" Padding="12,4"/>
+        </Grid>
+
+        <!-- Статус загрузки - аналог Python load_status -->
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+            <materialDesign:PackIcon x:Name="StatusIcon"
+                                     Kind="Information"
+                                     Width="16" Height="16"
+                                     VerticalAlignment="Center"
+                                     Margin="0,0,6,0"
+                                     Visibility="Collapsed"/>
+
+            <TextBlock x:Name="StatusText"
+                       Text=""
+                       FontWeight="Medium"
+                       VerticalAlignment="Center"/>
+        </StackPanel>
+    </StackPanel>
+</UserControl>
