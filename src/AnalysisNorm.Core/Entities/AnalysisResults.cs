@@ -1,13 +1,11 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace AnalysisNorm.Core.Entities;
 
 /// <summary>
 /// Результат анализа участка
-/// Полное соответствие Python statistics из analyzer.py
+/// Соответствует statistics из Python analyzer.py
 /// </summary>
 [Table("AnalysisResults")]
 public class AnalysisResult
@@ -38,45 +36,30 @@ public class AnalysisResult
     /// </summary>
     public bool UseCoefficients { get; set; }
 
-    // === ОСНОВНЫЕ СЧЕТЧИКИ (Python counters) ===
-    /// <summary>
-    /// Общее количество маршрутов - Python TotalRoutes
-    /// </summary>
-    public int TotalRoutes { get; set; }
-
-    /// <summary>
-    /// Количество обработанных маршрутов - Python AnalyzedRoutes
-    /// </summary>
-    public int AnalyzedRoutes { get; set; }
-
-    /// <summary>
-    /// Количество маршрутов, обработанных для анализа - Python ProcessedRoutes
-    /// </summary>
-    public int ProcessedRoutes { get; set; }
-
     // === ОСНОВНАЯ СТАТИСТИКА ===
-    public int Total { get; set; }
-    public int Processed { get; set; }
+    public int TotalRoutes { get; set; }
+    public int ProcessedRoutes { get; set; }
+    public int AnalyzedRoutes { get; set; }
     public int Economy { get; set; }
     public int Normal { get; set; }
     public int Overrun { get; set; }
 
-    // === ДЕТАЛЬНАЯ СТАТИСТИКА ПО ОТКЛОНЕНИЯМ ===
-    /// <summary>
-    /// Количество с сильной экономией - Python EconomyCount
-    /// </summary>
-    public int EconomyCount { get; set; }
-    
-    /// <summary>
-    /// Количество с перерасходом - Python OverrunCount
-    /// </summary>
-    public int OverrunCount { get; set; }
-    
-    /// <summary>
-    /// Количество в норме - Python NormalCount
-    /// </summary>
-    public int NormalCount { get; set; }
+    [Column(TypeName = "decimal(18,3)")]
+    public decimal AverageDeviation { get; set; }
 
+    [Column(TypeName = "decimal(18,3)")]
+    public decimal MinDeviation { get; set; }
+
+    [Column(TypeName = "decimal(18,3)")]
+    public decimal MaxDeviation { get; set; }
+
+    [Column(TypeName = "decimal(18,3)")]
+    public decimal MedianDeviation { get; set; }
+
+    [Column(TypeName = "decimal(18,3)")]
+    public decimal StandardDeviation { get; set; }
+
+    // === ДЕТАЛЬНАЯ СТАТИСТИКА ===
     public int EconomyStrong { get; set; }
     public int EconomyMedium { get; set; }
     public int EconomyWeak { get; set; }
@@ -84,63 +67,10 @@ public class AnalysisResult
     public int OverrunMedium { get; set; }
     public int OverrunStrong { get; set; }
 
-    // === СТАТИСТИЧЕСКИЕ ПОКАЗАТЕЛИ ===
-    /// <summary>
-    /// Среднее отклонение - Python AverageDeviation
-    /// </summary>
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal AverageDeviation { get; set; }
-
-    /// <summary>
-    /// Медиана отклонений - Python MedianDeviation
-    /// </summary>
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal MedianDeviation { get; set; }
-
-    /// <summary>
-    /// Минимальное отклонение - Python MinDeviation
-    /// </summary>
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal MinDeviation { get; set; }
-
-    /// <summary>
-    /// Максимальное отклонение - Python MaxDeviation
-    /// </summary>
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal MaxDeviation { get; set; }
-
-    /// <summary>
-    /// Среднеквадратическое отклонение - Python StandardDeviation
-    /// </summary>
-    [Column(TypeName = "decimal(18,6)")]
-    public decimal StandardDeviation { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal MeanDeviation { get; set; }
-
-    // === ВРЕМЕННЫЕ МЕТКИ ===
-    /// <summary>
-    /// Время завершения анализа - Python CompletedAt
-    /// </summary>
-    public DateTime CompletedAt { get; set; } = DateTime.UtcNow;
-
-    /// <summary>
-    /// Время последнего использования - Python LastUsed
-    /// </summary>
-    public DateTime LastUsed { get; set; } = DateTime.UtcNow;
-
-    /// <summary>
-    /// Дата анализа - Python AnalysisDate
-    /// </summary>
-    public DateTime AnalysisDate { get; set; } = DateTime.UtcNow;
-
-    /// <summary>
-    /// Время обработки в миллисекундах - Python ProcessingTimeMs
-    /// </summary>
-    public long ProcessingTimeMs { get; set; }
-
     // === СИСТЕМНЫЕ ПОЛЯ ===
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime CompletedAt { get; set; }
+    public DateTime LastUsed { get; set; }
 
     /// <summary>
     /// Хэш для идентификации уникального анализа
@@ -149,17 +79,15 @@ public class AnalysisResult
     public string AnalysisHash { get; set; } = string.Empty;
 
     /// <summary>
-    /// Сообщение об ошибке (если есть) - Python ErrorMessage
+    /// Время обработки в миллисекундах
+    /// </summary>
+    public long ProcessingTimeMs { get; set; }
+
+    /// <summary>
+    /// Сообщение об ошибке (если есть)
     /// </summary>
     [StringLength(1000)]
     public string? ErrorMessage { get; set; }
-
-    // === ДОПОЛНИТЕЛЬНЫЕ ДАННЫЕ ===
-    /// <summary>
-    /// Функции норм для интерполяции - Python NormFunctions
-    /// </summary>
-    [Column(TypeName = "TEXT")]
-    public string? NormFunctions { get; set; }
 
     // === НАВИГАЦИОННЫЕ СВОЙСТВА ===
     [ForeignKey(nameof(NormId))]
@@ -168,29 +96,74 @@ public class AnalysisResult
     public virtual ICollection<Route> Routes { get; set; } = new List<Route>();
 
     /// <summary>
+    /// Статистика анализа (JSON)
+    /// </summary>
+    public string? Statistics { get; set; }
+
+    /// <summary>
     /// Генерирует хэш для кэширования анализа
     /// </summary>
     public void GenerateAnalysisHash()
     {
-        var source = $"{SectionName}_{NormId ?? "ALL"}_{SingleSectionOnly}_{UseCoefficients}_{DateTime.Now:yyyyMMdd}";
-        using var sha256 = SHA256.Create();
-        var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(source));
-        AnalysisHash = Convert.ToHexString(hashBytes);
+        var source = $"{SectionName}_{NormId ?? "all"}_{SingleSectionOnly}_{UseCoefficients}_{DateTime.UtcNow:yyyyMMddHH}";
+        using var sha256 = System.Security.Cryptography.SHA256.Create();
+        var hash = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(source));
+        AnalysisHash = Convert.ToHexString(hash)[..16]; // Берем первые 16 символов
+    }
+}
+
+/// <summary>
+/// СОЗДАТЬ: Единый класс для констант статусов отклонений  
+/// Заменяет все дублирующиеся DeviationStatus static классы
+/// </summary>
+public static class DeviationStatusConstants
+{
+    public const string EconomyStrong = "Экономия сильная";
+    public const string EconomyMedium = "Экономия средняя";  
+    public const string EconomyWeak = "Экономия слабая";
+    public const string Normal = "Норма";
+    public const string OverrunWeak = "Перерасход слабый";
+    public const string OverrunMedium = "Перерасход средний";
+    public const string OverrunStrong = "Перерасход сильный";
+
+    // Пороги отклонений (из Python StatusClassifier)
+    public const decimal StrongEconomyThreshold = -30m;
+    public const decimal MediumEconomyThreshold = -20m;
+    public const decimal WeakEconomyThreshold = -5m;
+    public const decimal NormalUpperThreshold = 5m;
+    public const decimal WeakOverrunThreshold = 20m;
+    public const decimal MediumOverrunThreshold = 30m;
+
+    /// <summary>
+    /// Определяет статус по отклонению в процентах
+    /// Соответствует get_status из Python StatusClassifier
+    /// </summary>
+    public static string GetStatus(decimal deviation)
+    {
+        // ИСПРАВЛЕНО: Используем простые if-else вместо switch expression 
+        // для решения проблемы CS8510
+        if (deviation <= StrongEconomyThreshold) return EconomyStrong;
+        if (deviation <= MediumEconomyThreshold) return EconomyMedium;
+        if (deviation <= WeakEconomyThreshold) return EconomyWeak;
+        if (deviation <= NormalUpperThreshold) return Normal;
+        if (deviation <= WeakOverrunThreshold) return OverrunWeak;
+        if (deviation <= MediumOverrunThreshold) return OverrunMedium;
+        return OverrunStrong;
     }
 
     /// <summary>
-    /// Обновляет время последнего использования
+    /// Возвращает цвет для статуса
+    /// Соответствует get_status_color из Python StatusClassifier
     /// </summary>
-    public void UpdateLastUsed()
+    public static string GetStatusColor(string status)
     {
-        LastUsed = DateTime.UtcNow;
-    }
-
-    /// <summary>
-    /// Проверяет, актуален ли результат анализа
-    /// </summary>
-    public bool IsExpired(int expirationHours = 24)
-    {
-        return DateTime.UtcNow.Subtract(LastUsed).TotalHours > expirationHours;
+        if (status == EconomyStrong) return "darkgreen";
+        if (status == EconomyMedium) return "green";
+        if (status == EconomyWeak) return "lightgreen";
+        if (status == Normal) return "blue";
+        if (status == OverrunWeak) return "orange";
+        if (status == OverrunMedium) return "darkorange";
+        if (status == OverrunStrong) return "red";
+        return "gray";
     }
 }
