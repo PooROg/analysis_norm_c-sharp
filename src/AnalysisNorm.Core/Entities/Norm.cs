@@ -4,8 +4,8 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace AnalysisNorm.Core.Entities;
 
 /// <summary>
-/// Норма расхода электроэнергии
-/// Соответствует структуре norm_data из Python norm_storage.py
+/// Точка нормы - пара (нагрузка, расход)
+/// Полное соответствие Python norm point structure
 /// </summary>
 [Table("Norms")]
 public class Norm
@@ -107,4 +107,184 @@ public class NormPoint
     // === НАВИГАЦИОННЫЕ СВОЙСТВА ===
     [ForeignKey(nameof(NormId))]
     public virtual Norm Norm { get; set; } = null!;
+}
+
+/// <summary>
+/// Обновленная статистика обработки файлов (исправлены init-only properties)
+/// </summary>
+public class ProcessingStatistics
+{
+    /// <summary>
+    /// Общее количество файлов
+    /// </summary>
+    public int TotalFiles { get; set; }
+
+    /// <summary>
+    /// Общее количество маршрутов
+    /// </summary>
+    public int TotalRoutes { get; set; }
+
+    /// <summary>
+    /// Количество обработанных маршрутов
+    /// </summary>
+    public int ProcessedRoutes { get; set; }
+
+    /// <summary>
+    /// Количество дубликатов
+    /// </summary>
+    public int DuplicateRoutes { get; set; }
+
+    /// <summary>
+    /// Время обработки
+    /// </summary>
+    public TimeSpan ProcessingTime { get; set; }
+
+    /// <summary>
+    /// Ошибки обработки
+    /// </summary>
+    public List<string> Errors { get; set; } = new List<string>();
+
+    /// <summary>
+    /// Предупреждения
+    /// </summary>
+    public List<string> Warnings { get; set; } = new List<string>();
+
+    /// <summary>
+    /// Проверяет, была ли обработка успешной
+    /// </summary>
+    public bool IsSuccessful => Errors.Count == 0;
+
+    /// <summary>
+    /// Возвращает процент успешно обработанных маршрутов
+    /// </summary>
+    public double SuccessRate => TotalRoutes > 0 ? (double)ProcessedRoutes / TotalRoutes * 100 : 0;
+}
+
+/// <summary>
+/// Настройки приложения с недостающими свойствами
+/// </summary>
+public class ApplicationSettings
+{
+    /// <summary>
+    /// Время истечения кэша в часах
+    /// </summary>
+    public int CacheExpirationHours { get; set; } = 24;
+
+    /// <summary>
+    /// Время истечения кэша в днях
+    /// </summary>
+    public int CacheExpirationDays { get; set; } = 7;
+
+    /// <summary>
+    /// Максимальный размер кэша в мегабайтах
+    /// </summary>
+    public int MaxCacheSizeMb { get; set; } = 1024;
+
+    /// <summary>
+    /// Строка подключения к базе данных
+    /// </summary>
+    public string ConnectionString { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Уровень логирования
+    /// </summary>
+    public string LogLevel { get; set; } = "Information";
+
+    /// <summary>
+    /// Временная папка для файлов
+    /// </summary>
+    public string TempDirectory { get; set; } = Path.GetTempPath();
+
+    /// <summary>
+    /// Максимальный размер загружаемых файлов в мегабайтах
+    /// </summary>
+    public int MaxFileSizeMb { get; set; } = 100;
+
+    /// <summary>
+    /// Таймаут для операций в секундах
+    /// </summary>
+    public int OperationTimeoutSeconds { get; set; } = 300;
+}
+
+/// <summary>
+/// Опции экспорта (исправленный класс без дубликатов)
+/// </summary>
+public class ExportOptions
+{
+    /// <summary>
+    /// Включить графики в экспорт
+    /// </summary>
+    public bool IncludeCharts { get; set; } = true;
+
+    /// <summary>
+    /// Включить детальную статистику
+    /// </summary>
+    public bool IncludeDetailedStatistics { get; set; } = true;
+
+    /// <summary>
+    /// Формат дат для экспорта
+    /// </summary>
+    public string DateFormat { get; set; } = "dd.MM.yyyy";
+
+    /// <summary>
+    /// Включить сводную информацию
+    /// </summary>
+    public bool IncludeSummary { get; set; } = true;
+
+    /// <summary>
+    /// Показывать только обработанные данные
+    /// </summary>
+    public bool ProcessedDataOnly { get; set; } = false;
+}
+
+/// <summary>
+/// Результат обработки (обобщенный класс)
+/// </summary>
+public class ProcessingResult<T>
+{
+    /// <summary>
+    /// Успешность операции
+    /// </summary>
+    public bool IsSuccess { get; set; }
+
+    /// <summary>
+    /// Данные результата
+    /// </summary>
+    public T? Data { get; set; }
+
+    /// <summary>
+    /// Сообщение об ошибке
+    /// </summary>
+    public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// Статистика обработки
+    /// </summary>
+    public ProcessingStatistics? Statistics { get; set; }
+
+    /// <summary>
+    /// Создает успешный результат
+    /// </summary>
+    public static ProcessingResult<T> Success(T data, ProcessingStatistics? statistics = null)
+    {
+        return new ProcessingResult<T>
+        {
+            IsSuccess = true,
+            Data = data,
+            Statistics = statistics
+        };
+    }
+
+    /// <summary>
+    /// Создает результат с ошибкой
+    /// </summary>
+    public static ProcessingResult<T> Failure(string errorMessage, ProcessingStatistics? statistics = null)
+    {
+        return new ProcessingResult<T>
+        {
+            IsSuccess = false,
+            ErrorMessage = errorMessage,
+            Statistics = statistics
+        };
+    }
 }

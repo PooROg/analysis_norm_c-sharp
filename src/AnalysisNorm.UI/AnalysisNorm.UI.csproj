@@ -6,67 +6,55 @@
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <ApplicationIcon>icon.ico</ApplicationIcon>
-    <AssemblyTitle>Анализатор норм расхода электроэнергии РЖД</AssemblyTitle>
-    <AssemblyDescription>WPF приложение для анализа норм расхода электроэнергии РЖД с интерактивными графиками</AssemblyDescription>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
-  <!-- Зависимости WPF и MaterialDesign -->
-  <ItemGroup>
-    <PackageReference Include="MaterialDesignThemes" Version="5.1.0" />
-    <PackageReference Include="MaterialDesignColors" Version="3.1.0" />
-  </ItemGroup>
-
-  <!-- Зависимости для графиков и визуализации -->
-  <ItemGroup>
-    <PackageReference Include="OxyPlot.Wpf" Version="2.2.0" />
-    <PackageReference Include="OxyPlot.Core" Version="2.2.0" />
-    <PackageReference Include="OxyPlot.WindowsForms" Version="2.2.0" />
-  </ItemGroup>
-
-  <!-- Зависимости для DI и конфигурации -->
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
-    <PackageReference Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Configuration" Version="8.0.1" />
-  </ItemGroup>
-
-  <!-- Зависимости для логирования -->
-  <ItemGroup>
-    <PackageReference Include="Serilog" Version="4.1.0" />
-    <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
-    <PackageReference Include="Serilog.Extensions.Logging" Version="8.0.0" />
-    <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
-    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
-  </ItemGroup>
-
-  <!-- Ссылки на другие проекты решения -->
+  <!-- === PROJECT REFERENCES === -->
   <ItemGroup>
     <ProjectReference Include="..\AnalysisNorm.Core\AnalysisNorm.Core.csproj" />
     <ProjectReference Include="..\AnalysisNorm.Data\AnalysisNorm.Data.csproj" />
     <ProjectReference Include="..\AnalysisNorm.Services\AnalysisNorm.Services.csproj" />
   </ItemGroup>
 
-  <!-- Конфигурационные файлы -->
+  <!-- === WPF AND UI PACKAGES === -->
   <ItemGroup>
-    <None Update="appsettings.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    <!-- MaterialDesign for WPF -->
+    <PackageReference Include="MaterialDesignThemes" Version="5.1.0" />
+    <PackageReference Include="MaterialDesignColors" Version="3.1.0" />
+    
+    <!-- OxyPlot for WPF Charts -->
+    <PackageReference Include="OxyPlot.Wpf" Version="2.2.0" />
+    <PackageReference Include="OxyPlot.Core" Version="2.2.0" />
+    
+    <!-- Microsoft Extensions for WPF -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.0" />
+    
+    <!-- Excel Export -->
+    <PackageReference Include="EPPlus" Version="7.2.2" />
+    
+    <!-- Additional WPF Support -->
+    <PackageReference Include="System.Windows.Extensions" Version="9.0.0" />
+    
+    <!-- Serilog for WPF -->
+    <PackageReference Include="Serilog" Version="4.1.0" />
+    <PackageReference Include="Serilog.Extensions.Logging" Version="8.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+    <PackageReference Include="Serilog.Sinks.Debug" Version="3.0.0" />
   </ItemGroup>
 
-  <!-- Ресурсы приложения -->
+  <!-- === APPLICATION ICON AND RESOURCES === -->
   <ItemGroup>
     <Resource Include="Resources\**\*" />
   </ItemGroup>
 
-  <!-- Иконка приложения -->
   <ItemGroup>
-    <None Update="icon.ico">
+    <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

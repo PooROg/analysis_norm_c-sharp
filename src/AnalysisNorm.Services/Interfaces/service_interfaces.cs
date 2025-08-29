@@ -16,6 +16,13 @@ public interface IHtmlRouteProcessorService
     Task<ProcessingResult<IEnumerable<Route>>> ProcessHtmlFilesAsync(
         IEnumerable<string> htmlFiles, 
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Обрабатывает один HTML файл маршрутов
+    /// </summary>
+    Task<ProcessingResult<IEnumerable<Route>>> ProcessHtmlFileAsync(
+        string htmlFile,
+        CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Получает статистику обработки
@@ -34,6 +41,13 @@ public interface IHtmlNormProcessorService
     /// </summary>
     Task<ProcessingResult<IEnumerable<Norm>>> ProcessHtmlFilesAsync(
         IEnumerable<string> htmlFiles,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Обрабатывает один HTML файл норм
+    /// </summary>
+    Task<ProcessingResult<IEnumerable<Norm>>> ProcessHtmlFileAsync(
+        string htmlFile,
         CancellationToken cancellationToken = default);
     
     /// <summary>
@@ -59,300 +73,430 @@ public interface IDataAnalysisService
         bool singleSectionOnly = false,
         AnalysisOptions? options = null,
         CancellationToken cancellationToken = default);
-    
+
     /// <summary>
-    /// Получает список участков
+    /// Анализирует маршруты
     /// </summary>
-    Task<IEnumerable<string>> GetSectionsListAsync();
-    
+    Task<AnalysisResult> AnalyzeRoutesAsync(
+        IEnumerable<Route> routes,
+        Dictionary<string, InterpolationFunction>? normFunctions = null,
+        AnalysisOptions? options = null,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
-    /// Получает нормы для участка с количествами маршрутов
+    /// Получает все доступные участки
     /// </summary>
-    Task<IEnumerable<NormWithCount>> GetNormsWithCountsForSectionAsync(
-        string sectionName, 
-        bool singleSectionOnly = false);
+    Task<IEnumerable<string>> GetAvailableSectionsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Получает статистику по участку
+    /// </summary>
+    Task<SectionStatistics> GetSectionStatisticsAsync(string sectionName, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
 /// Сервис интерполяции норм
-/// Соответствует функциональности norm_storage.py
+/// Соответствует Python scipy interpolation
 /// </summary>
 public interface INormInterpolationService
 {
     /// <summary>
-    /// Интерполирует значение нормы для заданной нагрузки
-    /// </summary>
-    Task<decimal?> InterpolateNormValueAsync(string normId, decimal loadValue);
-    
-    /// <summary>
     /// Создает функцию интерполяции для нормы
     /// </summary>
-    Task<InterpolationFunction?> CreateInterpolationFunctionAsync(string normId);
-    
-    /// <summary>
-    /// Валидирует нормы в хранилище
-    /// </summary>
-    Task<ValidationResults> ValidateNormsAsync();
-}
+    Task<InterpolationFunction?> CreateInterpolationFunctionAsync(
+        string normId,
+        CancellationToken cancellationToken = default);
 
-// === LOCOMOTIVE SERVICES ===
+    /// <summary>
+    /// Интерполирует значение для заданной нагрузки
+    /// </summary>
+    double InterpolateValue(InterpolationFunction function, double load);
 
-/// <summary>
-/// Сервис управления коэффициентами локомотивов
-/// Соответствует LocomotiveCoefficientsManager из Python
-/// </summary>
-public interface ILocomotiveCoefficientService
-{
     /// <summary>
-    /// Загружает коэффициенты из Excel файла
+    /// Проверяет валидность функции интерполяции
     /// </summary>
-    Task<bool> LoadCoefficientsAsync(string filePath, double minWorkThreshold = 0.0);
-    
+    bool IsValidFunction(InterpolationFunction function);
+
     /// <summary>
-    /// Получает коэффициент для локомотива
+    /// Получает диапазон валидных значений для функции
     /// </summary>
-    Task<decimal> GetCoefficientAsync(string series, int number);
-    
-    /// <summary>
-    /// Получает статистику коэффициентов
-    /// </summary>
-    Task<CoefficientStatistics> GetStatisticsAsync();
-    
-    /// <summary>
-    /// Применяет коэффициенты к маршрутам
-    /// </summary>
-    Task ApplyCoefficientsAsync(IEnumerable<Route> routes);
+    (double MinLoad, double MaxLoad) GetValidRange(InterpolationFunction function);
 }
 
 /// <summary>
-/// Сервис фильтрации локомотивов
-/// Соответствует LocomotiveFilter из Python
-/// </summary>
-public interface ILocomotiveFilterService
-{
-    /// <summary>
-    /// Создает фильтр на основе маршрутов
-    /// </summary>
-    LocomotiveFilter CreateFilter(IEnumerable<Route> routes);
-    
-    /// <summary>
-    /// Фильтрует маршруты по выбранным локомотивам
-    /// </summary>
-    IEnumerable<Route> FilterRoutes(IEnumerable<Route> routes, LocomotiveFilter filter);
-    
-    /// <summary>
-    /// Получает локомотивы сгруппированные по сериям
-    /// </summary>
-    Task<Dictionary<string, List<int>>> GetLocomotivesBySeriesAsync();
-}
-
-// === STORAGE AND CACHING SERVICES ===
-
-/// <summary>
-/// Сервис хранения норм с кэшированием
-/// Соответствует NormStorage из Python с улучшениями
+/// Сервис хранения норм
+/// Соответствует Python NormStorage
 /// </summary>
 public interface INormStorageService
 {
     /// <summary>
-    /// Добавляет или обновляет нормы
+    /// Сохраняет нормы в базу данных
     /// </summary>
-    Task<Dictionary<string, string>> AddOrUpdateNormsAsync(IEnumerable<Norm> norms);
-    
-    /// <summary>
-    /// Получает норму по ID
-    /// </summary>
-    Task<Norm?> GetNormAsync(string normId);
-    
+    Task SaveNormsAsync(IEnumerable<Norm> norms, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Получает все нормы
     /// </summary>
-    Task<IEnumerable<Norm>> GetAllNormsAsync();
-    
+    Task<IEnumerable<Norm>> GetAllNormsAsync(CancellationToken cancellationToken = default);
+
     /// <summary>
-    /// Получает информацию о хранилище
+    /// Получает норму по ID
     /// </summary>
-    Task<StorageInfo> GetStorageInfoAsync();
+    Task<Norm?> GetNormByIdAsync(string normId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Удаляет устаревшие нормы
+    /// </summary>
+    Task CleanupOldNormsAsync(TimeSpan maxAge, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Получает информацию о хранилище норм
+    /// </summary>
+    Task<StorageInfo> GetStorageInfoAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>
-/// Сервис кэширования результатов анализа
+/// Сервис кэширования анализа
 /// </summary>
 public interface IAnalysisCacheService
 {
     /// <summary>
     /// Получает результат анализа из кэша
     /// </summary>
-    Task<AnalysisResult?> GetCachedAnalysisAsync(string analysisHash);
-    
+    Task<AnalysisResult?> GetCachedAnalysisAsync(
+        string sectionName,
+        string? normId,
+        bool singleSectionOnly,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Сохраняет результат анализа в кэш
     /// </summary>
-    Task SaveAnalysisToCacheAsync(AnalysisResult analysisResult);
-    
+    Task SaveAnalysisAsync(AnalysisResult analysis, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Очищает устаревший кэш
     /// </summary>
-    Task CleanupOldCacheAsync(TimeSpan maxAge);
-}
+    Task CleanupExpiredCacheAsync(CancellationToken cancellationToken = default);
 
-// === EXPORT SERVICES ===
-
-/// <summary>
-/// Сервис экспорта в Excel
-/// Соответствует export функциональности Python
-/// </summary>
-public interface IExcelExportService
-{
     /// <summary>
-    /// Экспортирует маршруты в Excel с форматированием
+    /// Получает статистику кэша
     /// </summary>
-    Task<bool> ExportRoutesToExcelAsync(
-        IEnumerable<Route> routes, 
-        string outputPath,
-        ExportOptions? options = null);
-    
-    /// <summary>
-    /// Экспортирует результаты анализа в Excel
-    /// </summary>
-    Task<bool> ExportAnalysisToExcelAsync(
-        AnalysisResult analysisResult, 
-        string outputPath);
+    Task<CacheStatistics> GetCacheStatisticsAsync(CancellationToken cancellationToken = default);
 }
 
 // === VISUALIZATION SERVICES ===
 
 /// <summary>
 /// Сервис подготовки данных для визуализации
-/// Подготавливает данные для OxyPlot (аналог visualization.py)
 /// </summary>
 public interface IVisualizationDataService
 {
     /// <summary>
-    /// Подготавливает данные для интерактивного графика
+    /// Подготавливает данные для интерактивных графиков
     /// </summary>
-    Task<VisualizationData> PrepareInteractiveChartDataAsync(
+    Task<ChartData> PrepareInteractiveChartDataAsync(
         string sectionName,
         IEnumerable<Route> routes,
         Dictionary<string, InterpolationFunction> normFunctions,
-        string? specificNormId = null);
-    
+        string? selectedNorm = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Подготавливает данные для визуализации
+    /// </summary>
+    Task<VisualizationData> PrepareVisualizationDataAsync(
+        AnalysisResult analysisResult,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Создает данные для графика отклонений
     /// </summary>
     ChartData CreateDeviationChartData(IEnumerable<Route> routes);
+
+    /// <summary>
+    /// Экспортирует график в изображение
+    /// </summary>
+    Task<string> ExportPlotToImageAsync(
+        ChartData chartData,
+        string outputPath,
+        ImageFormat format = ImageFormat.PNG,
+        CancellationToken cancellationToken = default);
 }
 
-// === UTILITY SERVICES ===
+// === LOCOMOTIVE SERVICES ===
 
 /// <summary>
-/// Детектор кодировки файлов
+/// Сервис работы с коэффициентами локомотивов
 /// </summary>
-public interface IFileEncodingDetector
+public interface ILocomotiveCoefficientService
 {
     /// <summary>
-    /// Определяет кодировку файла
+    /// Загружает коэффициенты из Excel файла
     /// </summary>
-    Task<string> DetectEncodingAsync(string filePath);
-    
+    Task<ProcessingResult<IEnumerable<LocomotiveCoefficient>>> LoadCoefficientsFromExcelAsync(
+        string filePath,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
-    /// Читает файл с автоматическим определением кодировки
+    /// Получает коэффициент для локомотива
     /// </summary>
-    Task<string> ReadTextWithEncodingDetectionAsync(string filePath);
+    Task<LocomotiveCoefficient?> GetCoefficientAsync(
+        string series,
+        string? number = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Получает все коэффициенты
+    /// </summary>
+    Task<IEnumerable<LocomotiveCoefficient>> GetAllCoefficientsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Получает статистику коэффициентов
+    /// </summary>
+    Task<CoefficientStatistics> GetStatisticsAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>
-/// Нормализатор текста
-/// Соответствует normalize_text из Python utils.py
+/// Сервис фильтрации локомотивов
 /// </summary>
-public interface ITextNormalizer
+public interface ILocomotiveFilterService
 {
     /// <summary>
-    /// Нормализует текст (убирает лишние пробелы, nbsp и т.д.)
+    /// Фильтрует маршруты по выбранным сериям локомотивов
     /// </summary>
-    string NormalizeText(string text);
-    
+    Task<IEnumerable<Route>> FilterRoutesByLocomotivesAsync(
+        IEnumerable<Route> routes,
+        IEnumerable<string> selectedSeries,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
-    /// Безопасно конвертирует в decimal
+    /// Получает все доступные серии локомотивов
     /// </summary>
-    decimal SafeDecimal(object? value, decimal defaultValue = 0m);
-    
+    Task<IEnumerable<string>> GetAvailableSeriesAsync(CancellationToken cancellationToken = default);
+
     /// <summary>
-    /// Безопасно конвертирует в int
+    /// Группирует серии локомотивов по типам
     /// </summary>
-    int SafeInt(object? value, int defaultValue = 0);
+    Task<Dictionary<string, IEnumerable<string>>> GroupSeriesByTypeAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Загружает коэффициенты для фильтрации
+    /// </summary>
+    Task<ProcessingResult<IEnumerable<LocomotiveCoefficient>>> LoadCoefficientsAsync(
+        string filePath,
+        CancellationToken cancellationToken = default);
 }
 
-// === DATA TRANSFER OBJECTS ===
+// === EXPORT SERVICES ===
 
-public record ProcessingResult<T>(bool Success, T? Data, string? ErrorMessage, ProcessingStatistics Statistics);
-
-public record ProcessingStatistics
+/// <summary>
+/// Сервис экспорта в Excel
+/// </summary>
+public interface IExcelExportService
 {
-    public int TotalFiles { get; init; }
-    public int ProcessedFiles { get; init; }
-    public int SkippedFiles { get; init; }
-    public int TotalRoutes { get; init; }
-    public int ProcessedRoutes { get; init; }
-    public int DuplicateRoutes { get; init; }
-    public TimeSpan ProcessingTime { get; init; }
-    public Dictionary<string, object> Details { get; init; } = new();
+    /// <summary>
+    /// Экспортирует маршруты в Excel
+    /// </summary>
+    Task<string> ExportRoutesToExcelAsync(
+        IEnumerable<Route> routes,
+        string filePath,
+        ExportOptions? options = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Экспортирует результаты анализа в Excel
+    /// </summary>
+    Task<string> ExportAnalysisResultsAsync(
+        AnalysisResult analysisResult,
+        string filePath,
+        ExportOptions? options = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Проверяет возможность создания файла по указанному пути
+    /// </summary>
+    bool CanCreateFile(string filePath);
 }
 
-public record NormWithCount(string NormId, int RouteCount);
+// === SUPPORTING CLASSES ===
 
-public record AnalysisOptions
+/// <summary>
+/// Опции анализа
+/// </summary>
+public class AnalysisOptions
 {
-    public bool UseCoefficients { get; init; }
-    public bool ExcludeLowWork { get; init; }
-    public IEnumerable<(string Series, int Number)>? SelectedLocomotives { get; init; }
+    public bool UseCoefficients { get; set; } = true;
+    public bool IncludeDeviationAnalysis { get; set; } = true;
+    public bool CalculateStatistics { get; set; } = true;
+    public int MaxRoutes { get; set; } = 10000;
+    public double MinLoad { get; set; } = 0.1;
+    public double MaxLoad { get; set; } = 1000.0;
 }
 
-public record InterpolationFunction(string NormId, string NormType, decimal[] XValues, decimal[] YValues);
-
-public record ValidationResults
+/// <summary>
+/// Функция интерполяции (упрощенная для исправления ошибок)
+/// </summary>
+public class InterpolationFunction
 {
-    public IEnumerable<string> ValidNorms { get; init; } = [];
-    public IEnumerable<string> InvalidNorms { get; init; } = [];
-    public IEnumerable<string> Warnings { get; init; } = [];
+    public string NormId { get; set; } = string.Empty;
+    public string InterpolationType { get; set; } = "linear";
+    public List<(double X, double Y)> Points { get; set; } = new List<(double, double)>();
+    public double MinX { get; set; }
+    public double MaxX { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public double Interpolate(double x)
+    {
+        if (Points.Count == 0) return 0;
+        if (x <= Points[0].X) return Points[0].Y;
+        if (x >= Points[^1].X) return Points[^1].Y;
+
+        for (int i = 0; i < Points.Count - 1; i++)
+        {
+            if (x >= Points[i].X && x <= Points[i + 1].X)
+            {
+                var x1 = Points[i].X;
+                var y1 = Points[i].Y;
+                var x2 = Points[i + 1].X;
+                var y2 = Points[i + 1].Y;
+
+                return y1 + (y2 - y1) * (x - x1) / (x2 - x1);
+            }
+        }
+
+        return 0;
+    }
 }
 
-public record LocomotiveFilter
+/// <summary>
+/// Данные для графиков
+/// </summary>
+public class ChartData
 {
-    public IEnumerable<(string Series, int Number)> SelectedLocomotives { get; init; } = [];
-    public bool UseCoefficients { get; init; }
-    public bool ExcludeLowWork { get; init; }
+    public string Title { get; set; } = string.Empty;
+    public ChartAxes Axes { get; set; } = new ChartAxes(string.Empty, string.Empty);
+    public List<ChartSeries> Series { get; set; } = new List<ChartSeries>();
+    public ChartStyle Style { get; set; } = new ChartStyle();
 }
 
-public record StorageInfo
+/// <summary>
+/// Оси графика
+/// </summary>
+public class ChartAxes
 {
-    public int TotalNorms { get; init; }
-    public int TotalPoints { get; init; }
-    public Dictionary<string, int> NormsByType { get; init; } = new();
-    public DateTime LastUpdated { get; init; }
+    public string XTitle { get; set; }
+    public string YTitle { get; set; }
+    public decimal? XMin { get; set; }
+    public decimal? XMax { get; set; }
+    public decimal? YMin { get; set; }
+    public decimal? YMax { get; set; }
+
+    public ChartAxes(string xTitle, string yTitle, decimal? xMin = null, decimal? xMax = null)
+    {
+        XTitle = xTitle;
+        YTitle = yTitle;
+        XMin = xMin;
+        XMax = xMax;
+    }
 }
 
-public record ExportOptions
+/// <summary>
+/// Серия данных для графика
+/// </summary>
+public class ChartSeries
 {
-    public bool IncludeFormatting { get; init; } = true;
-    public bool HighlightDeviations { get; init; } = true;
-    public bool IncludeStatistics { get; init; } = true;
+    public string Name { get; set; } = string.Empty;
+    public List<ChartPoint> Points { get; set; } = new List<ChartPoint>();
+    public string Color { get; set; } = "#000000";
+    public string SeriesType { get; set; } = "line";
 }
 
-public record VisualizationData
+/// <summary>
+/// Точка данных для графика
+/// </summary>
+public class ChartPoint
 {
-    public ChartData NormCurves { get; init; } = new();
-    public ChartData RoutePoints { get; init; } = new();
-    public ChartData DeviationAnalysis { get; init; } = new();
-    public Dictionary<string, object> Metadata { get; init; } = new();
+    public double X { get; set; }
+    public double Y { get; set; }
+    public string? Label { get; set; }
+    public object? Tag { get; set; }
 }
 
-public record ChartData
+/// <summary>
+/// Стиль графика
+/// </summary>
+public class ChartStyle
 {
-    public IEnumerable<ChartSeries> Series { get; init; } = [];
-    public ChartAxes Axes { get; init; } = new();
+    public string BackgroundColor { get; set; } = "#FFFFFF";
+    public bool ShowLegend { get; set; } = true;
+    public bool ShowGrid { get; set; } = true;
+    public int Width { get; set; } = 800;
+    public int Height { get; set; } = 600;
 }
 
-public record ChartSeries(string Name, decimal[] XValues, decimal[] YValues, string Color, string Type);
+/// <summary>
+/// Данные для визуализации
+/// </summary>
+public class VisualizationData
+{
+    public ChartData NormsChart { get; set; } = new ChartData();
+    public ChartData DeviationsChart { get; set; } = new ChartData();
+    public Dictionary<string, object> Metadata { get; set; } = new Dictionary<string, object>();
+}
 
-public record ChartAxes(string XTitle, string YTitle, decimal? XMin = null, decimal? XMax = null);
+/// <summary>
+/// Статистика участка
+/// </summary>
+public class SectionStatistics
+{
+    public string SectionName { get; set; } = string.Empty;
+    public int TotalRoutes { get; set; }
+    public int ProcessedRoutes { get; set; }
+    public decimal AverageDeviation { get; set; }
+    public DateTime LastAnalysis { get; set; }
+}
+
+/// <summary>
+/// Информация о хранилище
+/// </summary>
+public class StorageInfo
+{
+    public int TotalNorms { get; set; }
+    public int TotalPoints { get; set; }
+    public long DatabaseSizeBytes { get; set; }
+    public DateTime LastUpdate { get; set; }
+}
+
+/// <summary>
+/// Статистика кэша
+/// </summary>
+public class CacheStatistics
+{
+    public int TotalEntries { get; set; }
+    public int ExpiredEntries { get; set; }
+    public long CacheSizeBytes { get; set; }
+    public double HitRate { get; set; }
+}
+
+/// <summary>
+/// Статистика коэффициентов
+/// </summary>
+public class CoefficientStatistics
+{
+    public int TotalCoefficients { get; set; }
+    public int UniqueSeries { get; set; }
+    public decimal AverageCoefficient { get; set; }
+    public DateTime LastUpdate { get; set; }
+}
+
+/// <summary>
+/// Формат изображения для экспорта
+/// </summary>
+public enum ImageFormat
+{
+    PNG,
+    JPEG,
+    SVG,
+    PDF
+}

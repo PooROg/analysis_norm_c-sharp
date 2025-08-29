@@ -35,49 +35,41 @@
                               Content="Применять коэффициенты при анализе"
                               IsChecked="{Binding UseCoefficients}"
                               Style="{StaticResource MaterialDesignCheckBox}"
-                              VerticalAlignment="Center"/>
+                              Margin="0,0,16,0"/>
                     
-                    <materialDesign:PackIcon Kind="Information" 
-                                            Width="16" Height="16"
-                                            Margin="8,0,0,0"
-                                            VerticalAlignment="Center"
-                                            ToolTip="Коэффициенты корректируют расход с учетом особенностей локомотивов"/>
+                    <CheckBox x:Name="ExcludeLowWorkCheckBox"
+                              Content="Исключать локомотивы с низкой работой"
+                              IsChecked="{Binding ExcludeLowWork}"
+                              Style="{StaticResource MaterialDesignCheckBox}"/>
                 </StackPanel>
 
-                <CheckBox Content="Исключить локомотивы с низкой работой (< 200 кВт⋅час)"
-                          IsChecked="{Binding ExcludeLowWork}"
-                          Style="{StaticResource MaterialDesignCheckBox}"
-                          Margin="0,0,0,8"/>
-
-                <!-- Загрузка коэффициентов - аналог Python coefficients file loading -->
-                <Grid Margin="0,8,0,0">
+                <!-- Файл коэффициентов - аналог Python coefficients_file -->
+                <TextBlock Text="Файл коэффициентов:" 
+                           FontWeight="Medium" 
+                           Margin="0,8,0,4"/>
+                
+                <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="120"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-
-                    <TextBlock Grid.Column="0" 
-                               Text="Файл коэффициентов:" 
+                    
+                    <TextBlock x:Name="CoefficientsFileLabel"
+                               Grid.Column="0"
+                               Text="Файл не выбран"
                                VerticalAlignment="Center"
-                               FontWeight="Medium"/>
+                               Margin="0,0,8,0"
+                               Style="{StaticResource MaterialDesignCaptionTextBlock}"/>
 
-                    <TextBlock Grid.Column="1"
-                               x:Name="CoefficientsFileLabel"
-                               Text="Не загружен"
-                               VerticalAlignment="Center"
-                               Margin="8,0"
-                               Foreground="Gray"/>
-
-                    <Button Grid.Column="2"
+                    <Button Grid.Column="1"
                             Content="Загрузить"
                             Click="LoadCoefficientsFile_Click"
                             Style="{StaticResource MaterialDesignOutlinedButton}"
                             Padding="12,4"
                             Margin="4,0"/>
 
-                    <Button Grid.Column="3"
+                    <Button Grid.Column="2"
                             Content="Очистить"
                             Click="ClearCoefficients_Click"
                             Style="{StaticResource MaterialDesignOutlinedButton}"
@@ -109,49 +101,41 @@
                     
                     <Button Content="Выбрать все"
                             Click="SelectAll_Click"
-                            Style="{StaticResource MaterialDesignOutlinedButton}"
-                            Padding="12,4"
-                            Margin="16,0,4,0"
-                            FontSize="11"/>
+                            Style="{StaticResource MaterialDesignFlatButton}"
+                            Margin="12,0,0,0"/>
                     
                     <Button Content="Снять все"
-                            Click="DeselectAll_Click"
-                            Style="{StaticResource MaterialDesignOutlinedButton}"
-                            Padding="12,4"
-                            Margin="4,0"
-                            FontSize="11"/>
+                            Click="UnselectAll_Click"
+                            Style="{StaticResource MaterialDesignFlatButton}"
+                            Margin="4,0,0,0"/>
                 </StackPanel>
 
-                <!-- TabControl с сериями локомотивов - аналог Python TreeView tabs -->
+                <!-- TabControl для серий локомотивов -->
                 <TabControl x:Name="SeriesTabControl"
                             Style="{StaticResource MaterialDesignTabControl}"
-                            Margin="8,0,8,8">
+                            Margin="8">
+                    <!-- Вкладки будут создаваться динамически в коде -->
                 </TabControl>
             </DockPanel>
         </materialDesign:Card>
 
-        <!-- Кнопки действий -->
+        <!-- Кнопки управления -->
         <StackPanel Grid.Row="2" 
                     Orientation="Horizontal" 
                     HorizontalAlignment="Right"
-                    Margin="0,0,0,8">
-            
-            <Button Content="Применить фильтр"
-                    Click="ApplyFilter_Click"
+                    Margin="0,8,0,0">
+            <Button Content="ОК" 
+                    Click="OK_Click"
                     Style="{StaticResource MaterialDesignRaisedButton}"
-                    Padding="20,8"
-                    Margin="0,0,8,0"/>
-
-            <Button Content="Отмена"
+                    IsDefault="True"
+                    Margin="0,0,8,0"
+                    Padding="16,8"/>
+            
+            <Button Content="Отмена" 
                     Click="Cancel_Click"
                     Style="{StaticResource MaterialDesignOutlinedButton}"
-                    Padding="20,8"/>
+                    IsCancel="True"
+                    Padding="16,8"/>
         </StackPanel>
-
-        <!-- Статус-бар -->
-        <Border Grid.Row="3" 
-                Background="{DynamicResource MaterialDesignDivider}"
-                Height="1"
-                Margin="0,8,0,0"/>
     </Grid>
 </Window>

@@ -1,11 +1,13 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace AnalysisNorm.Core.Entities;
 
 /// <summary>
-/// Маршрут - основная единица данных, эквивалент строки в Python DataFrame
-/// Соответствует структуре данных из html_route_processor.py
+/// Маршрут - основная сущность данных анализа
+/// Полное соответствие Python DataFrame структуре из analyzer.py
 /// </summary>
 [Table("Routes")]
 public class Route
@@ -13,183 +15,216 @@ public class Route
     [Key]
     public int Id { get; set; }
 
-    // === ОСНОВНАЯ ИНФОРМАЦИЯ МАРШРУТА ===
+    // === ИДЕНТИФИКАЦИЯ МАРШРУТА ===
     [Required]
     [StringLength(50)]
     public string RouteNumber { get; set; } = string.Empty;
 
-    [Required]
-    public DateTime RouteDate { get; set; }
-
-    [StringLength(50)]
+    /// <summary>
+    /// Дата поездки в формате строки (как в Python)
+    /// </summary>
+    [StringLength(20)]
     public string? TripDate { get; set; }
 
-    [StringLength(50)]
+    /// <summary>
+    /// Табельный номер машиниста
+    /// </summary>
+    [StringLength(20)]
     public string? DriverTab { get; set; }
 
+    /// <summary>
+    /// Уникальный ключ маршрута (генерируется автоматически)
+    /// </summary>
     [StringLength(100)]
-    public string? Depot { get; set; }
+    public string? RouteKey { get; set; }
 
+    // === ДАТА И ВРЕМЯ (Python date fields) ===
+    /// <summary>
+    /// Дата маршрута для индексирования
+    /// </summary>
+    public DateTime? RouteDate { get; set; }
+
+    /// <summary>
+    /// Дата маршрута в исходном формате Python
+    /// </summary>
+    [StringLength(20)]
+    public string? Date { get; set; }
+
+    // === УЧАСТОК И НОРМА ===
+    [Required]
+    [StringLength(200)]
+    public string SectionName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Все участки маршрута через запятую (Python SectionNames)
+    /// </summary>
+    [StringLength(500)]
+    public string? SectionNames { get; set; }
+
+    /// <summary>
+    /// Номер нормы из Python
+    /// </summary>
     [StringLength(50)]
-    public string? Identifier { get; set; }
+    public string? NormNumber { get; set; }
+
+    /// <summary>
+    /// ID нормы для связи с таблицей норм
+    /// </summary>
+    [StringLength(50)]
+    public string? NormId { get; set; }
 
     // === ЛОКОМОТИВ ===
-    [StringLength(20)]
+    [StringLength(50)]
     public string? LocomotiveSeries { get; set; }
 
     [StringLength(20)]
     public string? LocomotiveNumber { get; set; }
 
-    // === ТЕХНИЧЕСКИЕ ХАРАКТЕРИСТИКИ ===
-    public double? Netto { get; set; }
-    public double? Brutto { get; set; }
-    public int? Osi { get; set; }
+    /// <summary>
+    /// Тип локомотива (Python LocomotiveType)
+    /// </summary>
+    [StringLength(50)]
+    public string? LocomotiveType { get; set; }
+
+    // === ОСНОВНЫЕ ДАННЫЕ РАБОТЫ (Python core data) ===
+    /// <summary>
+    /// Механическая работа (кВт⋅час) - Python MechanicalWork
+    /// </summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? MechanicalWork { get; set; }
 
     /// <summary>
-    /// Флаг использования красного цвета для НЕТТО/БРУТТО/ОСИ (из Python USE_RED_COLOR)
+    /// Расход электроэнергии (кВт⋅час) - Python ElectricConsumption
     /// </summary>
-    public bool UseRedColor { get; set; }
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? ElectricConsumption { get; set; }
 
     /// <summary>
-    /// Флаг использования красного цвета для расходов (из Python USE_RED_RASHOD)
+    /// Норма расхода (кВт⋅час) - Python NormConsumption
     /// </summary>
-    public bool UseRedRashod { get; set; }
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? NormConsumption { get; set; }
 
-    // === УЧАСТОК ===
-    [Required]
-    [StringLength(200)]
-    public string SectionName { get; set; } = string.Empty;
-
-    [StringLength(50)]
-    public string? NormNumber { get; set; }
-
-    [StringLength(20)]
-    public string? DoubleTraction { get; set; }
-
-    // === ОСНОВНЫЕ ПОКАЗАТЕЛИ ===
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? TkmBrutto { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? Km { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? Pr { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? RashodFact { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? RashodNorm { get; set; }
-
+    /// <summary>
+    /// Удельный расход (кВт⋅час/10⁴ ткм) - Python SpecificConsumption
+    /// </summary>
     [Column(TypeName = "decimal(18,6)")]
-    public decimal? UdNorma { get; set; }
+    public decimal? SpecificConsumption { get; set; }
 
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? AxleLoad { get; set; }
+    /// <summary>
+    /// Фактический расход для расчетов - Python FactConsumption
+    /// </summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? FactConsumption { get; set; }
 
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? NormaWork { get; set; }
+    /// <summary>
+    /// Фактическая работа для расчетов - Python WorkFact
+    /// </summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? WorkFact { get; set; }
 
-    [Column(TypeName = "decimal(18,6)")]
-    public decimal? FactUd { get; set; }
+    // === ФИЗИЧЕСКИЕ ПАРАМЕТРЫ ===
+    /// <summary>
+    /// Масса поезда (тонны) - Python TrainWeight
+    /// </summary>
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal? TrainWeight { get; set; }
 
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? FactWork { get; set; }
+    /// <summary>
+    /// Масса нетто (тонны) - Python NettoTons
+    /// </summary>
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal? NettoTons { get; set; }
 
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? NormaSingle { get; set; }
+    /// <summary>
+    /// Масса брутто (тонны) - Python BruttoTons
+    /// </summary>
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal? BruttoTons { get; set; }
 
-    // === ДОПОЛНИТЕЛЬНЫЕ СОСТАВЛЯЮЩИЕ ===
-    // Простой с бригадой
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? IdleBrigadaTotal { get; set; }
+    /// <summary>
+    /// Количество осей - Python AxesCount
+    /// </summary>
+    public int? AxesCount { get; set; }
 
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? IdleBrigadaNorm { get; set; }
+    /// <summary>
+    /// Расстояние (км) - Python Distance
+    /// </summary>
+    [Column(TypeName = "decimal(10,3)")]
+    public decimal? Distance { get; set; }
 
-    // Маневры
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? ManevryTotal { get; set; }
+    /// <summary>
+    /// Время в пути (часы) - Python TravelTime
+    /// </summary>
+    [Column(TypeName = "decimal(8,2)")]
+    public decimal? TravelTime { get; set; }
 
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? ManevryNorm { get; set; }
+    /// <summary>
+    /// Средняя скорость (км/ч) - Python AverageSpeed
+    /// </summary>
+    [Column(TypeName = "decimal(8,2)")]
+    public decimal? AverageSpeed { get; set; }
 
-    // Трогание с места
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? StartTotal { get; set; }
+    /// <summary>
+    /// Километры (как в Python) - Python Kilometers
+    /// </summary>
+    [Column(TypeName = "decimal(10,3)")]
+    public decimal? Kilometers { get; set; }
 
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? StartNorm { get; set; }
+    /// <summary>
+    /// Тонно-километры - Python TonKilometers
+    /// </summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal? TonKilometers { get; set; }
 
-    // Нагон опозданий
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? DelayTotal { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? DelayNorm { get; set; }
-
-    // Ограничения скорости
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? SpeedLimitTotal { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? SpeedLimitNorm { get; set; }
-
-    // На пересылаемые локомотивы
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? TransferLocoTotal { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? TransferLocoNorm { get; set; }
-
-    // === МЕТАДАННЫЕ ОБРАБОТКИ ===
-    [StringLength(20)]
-    public string? DuplicatesCount { get; set; }
-
-    [StringLength(10)]
-    public string? NEqualsF { get; set; }
-
-    // === АНАЛИЗ (рассчитывается при анализе) ===
-    [Column(TypeName = "decimal(18,6)")]
-    public decimal? NormInterpolated { get; set; }
-
-    [StringLength(50)]
-    public string? NormalizationParameter { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? ParameterValue { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
+    // === АНАЛИЗ ОТКЛОНЕНИЙ ===
+    /// <summary>
+    /// Процент отклонения от нормы
+    /// </summary>
+    [Column(TypeName = "decimal(8,2)")]
     public decimal? DeviationPercent { get; set; }
 
-    [StringLength(50)]
-    public string? Status { get; set; }
+    /// <summary>
+    /// Статус отклонения
+    /// </summary>
+    public DeviationStatus DeviationStatus { get; set; } = DeviationStatus.Normal;
 
-    // === КОЭФФИЦИЕНТЫ ===
-    [Column(TypeName = "decimal(18,6)")]
-    public decimal? Coefficient { get; set; }
+    /// <summary>
+    /// КПД (эффективность) - Python Efficiency
+    /// </summary>
+    [Column(TypeName = "decimal(8,4)")]
+    public decimal? Efficiency { get; set; }
 
-    [Column(TypeName = "decimal(18,6)")]
-    public decimal? FactUdOriginal { get; set; }
+    // === ДОПОЛНИТЕЛЬНАЯ ИНФОРМАЦИЯ ===
+    /// <summary>
+    /// Погодные условия - Python WeatherConditions
+    /// </summary>
+    [StringLength(100)]
+    public string? WeatherConditions { get; set; }
+
+    /// <summary>
+    /// Комментарии - Python Comments
+    /// </summary>
+    [StringLength(500)]
+    public string? Comments { get; set; }
 
     // === СИСТЕМНЫЕ ПОЛЯ ===
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 
     /// <summary>
-    /// Хэш для идентификации дубликатов (номер_маршрута + дата_поездки + табельный)
-    /// Эквивалент extract_route_key из Python utils.py
+    /// Флаг обработки
     /// </summary>
-    [StringLength(200)]
-    public string? RouteKey { get; set; }
+    public bool IsProcessed { get; set; }
 
     // === НАВИГАЦИОННЫЕ СВОЙСТВА ===
-    public virtual ICollection<AnalysisResult> AnalysisResults { get; set; } = new List<AnalysisResult>();
+    [ForeignKey(nameof(NormId))]
+    public virtual Norm? Norm { get; set; }
+
+    public virtual AnalysisResult? AnalysisResult { get; set; }
 
     /// <summary>
-    /// Вычисляет ключ маршрута для группировки дубликатов
-    /// Соответствует extract_route_key из Python utils.py
+    /// Генерирует уникальный ключ маршрута (аналог extract_route_key из Python)
     /// </summary>
     public void GenerateRouteKey()
     {
@@ -199,5 +234,73 @@ public class Route
         {
             RouteKey = $"{RouteNumber}_{TripDate}_{DriverTab}";
         }
+    }
+
+    /// <summary>
+    /// Рассчитывает процент отклонения от нормы
+    /// </summary>
+    public void CalculateDeviation()
+    {
+        if (FactConsumption.HasValue && NormConsumption.HasValue && NormConsumption.Value > 0)
+        {
+            DeviationPercent = ((FactConsumption.Value - NormConsumption.Value) / NormConsumption.Value) * 100;
+            DeviationStatus = DeviationStatus.GetStatus(DeviationPercent.Value);
+        }
+    }
+}
+
+/// <summary>
+/// Статусы отклонения (соответствует Python StatusClassifier)
+/// </summary>
+public enum DeviationStatus
+{
+    EconomyStrong = -3,    // < -15%
+    EconomyMedium = -2,    // -15% to -10%  
+    EconomyWeak = -1,      // -10% to -5%
+    Normal = 0,            // -5% to +5%
+    OverrunWeak = 1,       // +5% to +10%
+    OverrunMedium = 2,     // +10% to +15%
+    OverrunStrong = 3      // > +15%
+}
+
+/// <summary>
+/// Методы расширения для работы со статусами отклонения
+/// </summary>
+public static class DeviationStatusExtensions
+{
+    /// <summary>
+    /// Определяет статус по проценту отклонения (Python get_status)
+    /// </summary>
+    public static DeviationStatus GetStatus(this DeviationStatus _, decimal deviationPercent)
+    {
+        return deviationPercent switch
+        {
+            < -15 => DeviationStatus.EconomyStrong,
+            >= -15 and < -10 => DeviationStatus.EconomyMedium,
+            >= -10 and < -5 => DeviationStatus.EconomyWeak,
+            >= -5 and <= 5 => DeviationStatus.Normal,
+            > 5 and <= 10 => DeviationStatus.OverrunWeak,
+            > 10 and <= 15 => DeviationStatus.OverrunMedium,
+            > 15 => DeviationStatus.OverrunStrong,
+            _ => DeviationStatus.Normal
+        };
+    }
+
+    /// <summary>
+    /// Возвращает описание статуса на русском языке
+    /// </summary>
+    public static string GetDescription(this DeviationStatus status)
+    {
+        return status switch
+        {
+            DeviationStatus.EconomyStrong => "Сильная экономия",
+            DeviationStatus.EconomyMedium => "Средняя экономия",
+            DeviationStatus.EconomyWeak => "Слабая экономия",
+            DeviationStatus.Normal => "Норма",
+            DeviationStatus.OverrunWeak => "Слабый перерасход",
+            DeviationStatus.OverrunMedium => "Средний перерасход",
+            DeviationStatus.OverrunStrong => "Сильный перерасход",
+            _ => "Неопределено"
+        };
     }
 }
