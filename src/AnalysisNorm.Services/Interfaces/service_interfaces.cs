@@ -1,3 +1,4 @@
+using System.Drawing;
 using AnalysisNorm.Core.Entities;
 
 namespace AnalysisNorm.Services.Interfaces;
@@ -14,7 +15,7 @@ public interface IHtmlRouteProcessorService
     /// Обрабатывает список HTML файлов маршрутов
     /// </summary>
     Task<ProcessingResult<IEnumerable<Route>>> ProcessHtmlFilesAsync(
-        IEnumerable<string> htmlFiles, 
+        IEnumerable<string> htmlFiles,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -23,7 +24,7 @@ public interface IHtmlRouteProcessorService
     Task<ProcessingResult<IEnumerable<Route>>> ProcessHtmlFileAsync(
         string htmlFile,
         CancellationToken cancellationToken = default);
-    
+
     /// <summary>
     /// Получает статистику обработки
     /// </summary>
@@ -49,7 +50,7 @@ public interface IHtmlNormProcessorService
     Task<ProcessingResult<IEnumerable<Norm>>> ProcessHtmlFileAsync(
         string htmlFile,
         CancellationToken cancellationToken = default);
-    
+
     /// <summary>
     /// Получает статистику обработки норм
     /// </summary>
@@ -97,9 +98,16 @@ public interface IDataAnalysisService
 /// <summary>
 /// Сервис интерполяции норм
 /// Соответствует Python scipy interpolation
+/// ИСПРАВЛЕНО: Добавлен недостающий метод InterpolateNormValueAsync
 /// </summary>
 public interface INormInterpolationService
 {
+    /// <summary>
+    /// Интерполирует значение нормы для заданной нагрузки
+    /// ДОБАВЛЕНО: Недостающий метод из реализации
+    /// </summary>
+    Task<decimal?> InterpolateNormValueAsync(string normId, decimal loadValue);
+
     /// <summary>
     /// Создает функцию интерполяции для нормы
     /// </summary>
@@ -126,6 +134,7 @@ public interface INormInterpolationService
 /// <summary>
 /// Сервис хранения норм
 /// Соответствует Python NormStorage
+/// ИСПРАВЛЕНО: GetNormAsync вместо GetNormByIdAsync
 /// </summary>
 public interface INormStorageService
 {
@@ -141,8 +150,9 @@ public interface INormStorageService
 
     /// <summary>
     /// Получает норму по ID
+    /// ИСПРАВЛЕНО: Правильная сигнатура метода
     /// </summary>
-    Task<Norm?> GetNormByIdAsync(string normId, CancellationToken cancellationToken = default);
+    Task<Norm?> GetNormAsync(string normId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Удаляет устаревшие нормы
@@ -161,26 +171,22 @@ public interface INormStorageService
 public interface IAnalysisCacheService
 {
     /// <summary>
-    /// Получает результат анализа из кэша
+    /// Получает результат анализа из кэша по хэшу
     /// </summary>
-    Task<AnalysisResult?> GetCachedAnalysisAsync(
-        string sectionName,
-        string? normId,
-        bool singleSectionOnly,
-        CancellationToken cancellationToken = default);
+    Task<AnalysisResult?> GetCachedAnalysisAsync(string analysisHash);
 
     /// <summary>
     /// Сохраняет результат анализа в кэш
     /// </summary>
-    Task SaveAnalysisAsync(AnalysisResult analysis, CancellationToken cancellationToken = default);
+    Task SaveAnalysisAsync(AnalysisResult analysisResult, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Очищает устаревший кэш
     /// </summary>
-    Task CleanupExpiredCacheAsync(CancellationToken cancellationToken = default);
+    Task CleanupExpiredCacheAsync(TimeSpan maxAge, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Получает статистику кэша
+    /// Получает статистику использования кэша
     /// </summary>
     Task<CacheStatistics> GetCacheStatisticsAsync(CancellationToken cancellationToken = default);
 }
@@ -189,38 +195,36 @@ public interface IAnalysisCacheService
 
 /// <summary>
 /// Сервис подготовки данных для визуализации
+/// ИСПРАВЛЕНО: Совместимость с OxyPlot и правильные сигнатуры методов
 /// </summary>
 public interface IVisualizationDataService
 {
     /// <summary>
-    /// Подготавливает данные для интерактивных графиков
+    /// Подготавливает данные для интерактивного графика
+    /// ИСПРАВЛЕНО: Правильная сигнатура с VisualizationData
     /// </summary>
-    Task<ChartData> PrepareInteractiveChartDataAsync(
+    Task<VisualizationData> PrepareInteractiveChartDataAsync(
         string sectionName,
         IEnumerable<Route> routes,
         Dictionary<string, InterpolationFunction> normFunctions,
-        string? selectedNorm = null,
+        string? specificNormId = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Подготавливает данные для визуализации
+    /// Экспортирует график в файл изображения
     /// </summary>
-    Task<VisualizationData> PrepareVisualizationDataAsync(
-        AnalysisResult analysisResult,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Создает данные для графика отклонений
-    /// </summary>
-    ChartData CreateDeviationChartData(IEnumerable<Route> routes);
-
-    /// <summary>
-    /// Экспортирует график в изображение
-    /// </summary>
-    Task<string> ExportPlotToImageAsync(
-        ChartData chartData,
+    Task<bool> ExportChartToImageAsync(
+        VisualizationData visualizationData,
         string outputPath,
-        ImageFormat format = ImageFormat.PNG,
+        PlotExportOptions? options = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Подготавливает статистические данные
+    /// </summary>
+    Task<StatisticsData> PrepareStatisticsDataAsync(
+        IEnumerable<Route> routes,
+        string? sectionFilter = null,
         CancellationToken cancellationToken = default);
 }
 
@@ -297,12 +301,12 @@ public interface IExcelExportService
 {
     /// <summary>
     /// Экспортирует маршруты в Excel
+    /// ИСПРАВЛЕНО: Правильный возвращаемый тип
     /// </summary>
-    Task<string> ExportRoutesToExcelAsync(
+    Task<bool> ExportRoutesToExcelAsync(
         IEnumerable<Route> routes,
-        string filePath,
-        ExportOptions? options = null,
-        CancellationToken cancellationToken = default);
+        string outputPath,
+        ExportOptions? options = null);
 
     /// <summary>
     /// Экспортирует результаты анализа в Excel
@@ -322,11 +326,14 @@ public interface IExcelExportService
 // === SUPPORTING CLASSES ===
 
 /// <summary>
-/// Опции анализа
+/// Опции анализа данных
 /// </summary>
 public class AnalysisOptions
 {
     public bool UseCoefficients { get; set; } = true;
+    public decimal TolerancePercent { get; set; } = 5.0m;
+    public bool EnableCaching { get; set; } = true;
+    public bool ValidateResults { get; set; } = true;
     public bool IncludeDeviationAnalysis { get; set; } = true;
     public bool CalculateStatistics { get; set; } = true;
     public int MaxRoutes { get; set; } = 10000;
@@ -335,49 +342,326 @@ public class AnalysisOptions
 }
 
 /// <summary>
-/// Функция интерполяции (упрощенная для исправления ошибок)
+/// Статистика по участку
 /// </summary>
-public class InterpolationFunction
+public class SectionStatistics
 {
-    public string NormId { get; set; } = string.Empty;
-    public string InterpolationType { get; set; } = "linear";
-    public List<(double X, double Y)> Points { get; set; } = new List<(double, double)>();
-    public double MinX { get; set; }
-    public double MaxX { get; set; }
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public string SectionName { get; set; } = string.Empty;
+    public int TotalRoutes { get; set; }
+    public int UniqueNorms { get; set; }
+    public decimal AverageDeviation { get; set; }
+    public Dictionary<string, int> StatusDistribution { get; set; } = new();
+    public DateTime LastAnalysis { get; set; }
+}
 
+/// <summary>
+/// Функция интерполяции
+/// ИСПРАВЛЕНО: Совместимость с двумя форматами (record и class)
+/// </summary>
+public record InterpolationFunction(
+    string NormId,
+    string NormType,
+    decimal[] XValues,
+    decimal[] YValues)
+{
+    public bool IsValid => XValues.Length >= 2 && XValues.Length == YValues.Length;
+    public decimal MinX => XValues.Min();
+    public decimal MaxX => XValues.Max();
+    public int PointCount => XValues.Length;
+
+    // Дополнительные свойства для совместимости
+    public string Id { get; init; } = NormId;
+    public string Description { get; init; } = NormType;
+    public string InterpolationType { get; init; } = "linear";
+    public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
+    public double MinLoad => (double)MinX;
+    public double MaxLoad => (double)MaxX;
+
+    /// <summary>
+    /// Простая линейная интерполяция
+    /// </summary>
     public double Interpolate(double x)
     {
-        if (Points.Count == 0) return 0;
-        if (x <= Points[0].X) return Points[0].Y;
-        if (x >= Points[^1].X) return Points[^1].Y;
+        if (XValues.Length == 0) return 0;
+        if (x <= (double)XValues[0]) return (double)YValues[0];
+        if (x >= (double)XValues[^1]) return (double)YValues[^1];
 
-        for (int i = 0; i < Points.Count - 1; i++)
+        for (int i = 0; i < XValues.Length - 1; i++)
         {
-            if (x >= Points[i].X && x <= Points[i + 1].X)
+            var x1 = (double)XValues[i];
+            var x2 = (double)XValues[i + 1];
+            if (x >= x1 && x <= x2)
             {
-                var x1 = Points[i].X;
-                var y1 = Points[i].Y;
-                var x2 = Points[i + 1].X;
-                var y2 = Points[i + 1].Y;
-
+                var y1 = (double)YValues[i];
+                var y2 = (double)YValues[i + 1];
                 return y1 + (y2 - y1) * (x - x1) / (x2 - x1);
             }
         }
-
         return 0;
     }
 }
 
 /// <summary>
-/// Данные для графиков
+/// Информация о хранилище
+/// </summary>
+public class StorageInfo
+{
+    public int TotalNorms { get; set; }
+    public int ValidNorms { get; set; }
+    public int InvalidNorms { get; set; }
+    public DateTime LastUpdate { get; set; }
+    public long StorageSize { get; set; }
+    public int TotalPoints { get; set; }
+    public long DatabaseSizeBytes { get; set; }
+}
+
+/// <summary>
+/// Результат анализа
+/// </summary>
+public class AnalysisResult
+{
+    public string SectionName { get; set; } = string.Empty;
+    public string? NormId { get; set; }
+    public bool SingleSectionOnly { get; set; }
+    public bool UseCoefficients { get; set; }
+    public List<Route> Routes { get; set; } = new();
+    public DateTime CreatedAt { get; set; }
+    public string? AnalysisHash { get; set; }
+
+    // Дополнительные статистические свойства
+    public int TotalRoutes { get; set; }
+    public int ProcessedRoutes { get; set; }
+    public int AnalyzedRoutes { get; set; }
+    public int Economy { get; set; }
+    public int Normal { get; set; }
+    public int Overrun { get; set; }
+    public decimal AverageDeviation { get; set; }
+
+    /// <summary>
+    /// Генерирует хэш для кэширования
+    /// </summary>
+    public void GenerateAnalysisHash()
+    {
+        var hashInput = $"{SectionName}_{NormId ?? "all"}_{SingleSectionOnly}_{UseCoefficients}";
+        using var sha256 = System.Security.Cryptography.SHA256.Create();
+        var hashBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(hashInput));
+        AnalysisHash = Convert.ToHexString(hashBytes)[..16]; // Первые 16 символов
+    }
+}
+
+/// <summary>
+/// Норма с количеством маршрутов
+/// </summary>
+public record NormWithCount(string NormId, int RouteCount);
+
+/// <summary>
+/// Статистика кэша
+/// </summary>
+public class CacheStatistics
+{
+    public int TotalEntries { get; set; }
+    public int HitCount { get; set; }
+    public int MissCount { get; set; }
+    public decimal HitRatio => TotalEntries > 0 ? (decimal)HitCount / TotalEntries : 0;
+    public DateTime LastCleanup { get; set; }
+    public int ExpiredEntries { get; set; }
+    public long CacheSizeBytes { get; set; }
+    public double HitRate => TotalEntries > 0 ? (double)HitCount / TotalEntries : 0;
+}
+
+/// <summary>
+/// Статистика коэффициентов
+/// </summary>
+public class CoefficientStatistics
+{
+    public int TotalCoefficients { get; set; }
+    public int UniqueSeries { get; set; }
+    public decimal AverageCoefficient { get; set; }
+    public DateTime LastUpdate { get; set; }
+}
+
+/// <summary>
+/// Результат обработки (обобщенный класс)
+/// </summary>
+public class ProcessingResult<T>
+{
+    /// <summary>
+    /// Успешность операции
+    /// </summary>
+    public bool IsSuccess { get; set; }
+
+    /// <summary>
+    /// Данные результата
+    /// </summary>
+    public T? Data { get; set; }
+
+    /// <summary>
+    /// Сообщение об ошибке
+    /// </summary>
+    public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// Статистика обработки
+    /// </summary>
+    public ProcessingStatistics? Statistics { get; set; }
+
+    /// <summary>
+    /// Создает успешный результат
+    /// </summary>
+    public static ProcessingResult<T> Success(T data, ProcessingStatistics? statistics = null)
+    {
+        return new ProcessingResult<T>
+        {
+            IsSuccess = true,
+            Data = data,
+            Statistics = statistics
+        };
+    }
+
+    /// <summary>
+    /// Создает результат с ошибкой
+    /// </summary>
+    public static ProcessingResult<T> Failure(string errorMessage)
+    {
+        return new ProcessingResult<T>
+        {
+            IsSuccess = false,
+            ErrorMessage = errorMessage
+        };
+    }
+}
+
+/// <summary>
+/// Статистика обработки
+/// </summary>
+public class ProcessingStatistics
+{
+    public int TotalFiles { get; set; }
+    public int ProcessedFiles { get; set; }
+    public int SkippedFiles { get; set; }
+    public int ErrorFiles { get; set; }
+    public long ProcessingTimeMs { get; set; }
+    public DateTime StartTime { get; set; } = DateTime.UtcNow;
+    public DateTime? EndTime { get; set; }
+
+    public double SuccessRate => TotalFiles > 0 ? (double)ProcessedFiles / TotalFiles * 100 : 0;
+}
+
+/// <summary>
+/// Опции экспорта
+/// </summary>
+public class ExportOptions
+{
+    /// <summary>
+    /// Включить графики в экспорт
+    /// </summary>
+    public bool IncludeCharts { get; set; } = true;
+
+    /// <summary>
+    /// Включить детальную статистику
+    /// </summary>
+    public bool IncludeDetailedStatistics { get; set; } = true;
+
+    /// <summary>
+    /// Формат дат для экспорта
+    /// </summary>
+    public string DateFormat { get; set; } = "dd.MM.yyyy";
+
+    /// <summary>
+    /// Включить сводную информацию
+    /// </summary>
+    public bool IncludeSummary { get; set; } = true;
+
+    /// <summary>
+    /// Показывать только обработанные данные
+    /// </summary>
+    public bool ProcessedDataOnly { get; set; } = false;
+}
+
+/// <summary>
+/// Данные для визуализации
+/// ИСПРАВЛЕНО: Полное определение всех классов данных
+/// </summary>
+public class VisualizationData
+{
+    public string Title { get; set; } = string.Empty;
+    public string SectionName { get; set; } = string.Empty;
+    public ChartSeriesData NormCurves { get; set; } = new();
+    public ChartSeriesData RoutePoints { get; set; } = new();
+    public DeviationAnalysisData DeviationData { get; set; } = new();
+    public Dictionary<string, object> Metadata { get; set; } = new();
+}
+
+/// <summary>
+/// Данные серий для графиков
+/// </summary>
+public class ChartSeriesData
+{
+    public string Title { get; set; } = string.Empty;
+    public AxisConfiguration Axes { get; set; } = new();
+    public List<SeriesData> Series { get; set; } = new();
+}
+
+/// <summary>
+/// Данные одной серии
+/// </summary>
+public class SeriesData
+{
+    public string Name { get; set; } = string.Empty;
+    public decimal[] XValues { get; set; } = Array.Empty<decimal>();
+    public decimal[] YValues { get; set; } = Array.Empty<decimal>();
+    public string Color { get; set; } = "#000000";
+    public string SeriesType { get; set; } = "Line"; // Line, Scatter, etc.
+    public Dictionary<string, object> Metadata { get; set; } = new();
+}
+
+/// <summary>
+/// Конфигурация осей
+/// </summary>
+public class AxisConfiguration
+{
+    public string XAxisTitle { get; set; } = string.Empty;
+    public string YAxisTitle { get; set; } = string.Empty;
+    public string XAxisKey { get; set; } = "BottomAxis";
+    public string YAxisKey { get; set; } = "LeftAxis";
+}
+
+/// <summary>
+/// Данные анализа отклонений
+/// </summary>
+public class DeviationAnalysisData
+{
+    public int TotalRoutes { get; set; }
+    public decimal AverageDeviation { get; set; }
+    public Dictionary<string, int> DeviationRanges { get; set; } = new();
+    public Dictionary<string, int> StatusDistribution { get; set; } = new();
+}
+
+/// <summary>
+/// Данные статистики
+/// </summary>
+public class StatisticsData
+{
+    public int TotalRoutes { get; set; }
+    public string? SectionName { get; set; }
+    public decimal AverageDeviation { get; set; }
+    public decimal MinDeviation { get; set; }
+    public decimal MaxDeviation { get; set; }
+    public decimal MedianDeviation { get; set; }
+    public Dictionary<string, int> StatusDistribution { get; set; } = new();
+    public Dictionary<string, int> NormDistribution { get; set; } = new();
+    public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>
+/// Данные для графиков (оригинальная структура для совместимости)
 /// </summary>
 public class ChartData
 {
     public string Title { get; set; } = string.Empty;
-    public ChartAxes Axes { get; set; } = new ChartAxes(string.Empty, string.Empty);
-    public List<ChartSeries> Series { get; set; } = new List<ChartSeries>();
-    public ChartStyle Style { get; set; } = new ChartStyle();
+    public ChartAxes Axes { get; set; } = new("", "");
+    public List<ChartSeries> Series { get; set; } = new();
+    public ChartStyle Style { get; set; } = new();
 }
 
 /// <summary>
@@ -407,9 +691,14 @@ public class ChartAxes
 public class ChartSeries
 {
     public string Name { get; set; } = string.Empty;
-    public List<ChartPoint> Points { get; set; } = new List<ChartPoint>();
+    public List<ChartPoint> Points { get; set; } = new();
     public string Color { get; set; } = "#000000";
     public string SeriesType { get; set; } = "line";
+
+    // Альтернативное представление для совместимости
+    public decimal[] XValues => Points.Select(p => (decimal)p.X).ToArray();
+    public decimal[] YValues => Points.Select(p => (decimal)p.Y).ToArray();
+    public string Type => SeriesType;
 }
 
 /// <summary>
@@ -436,62 +725,24 @@ public class ChartStyle
 }
 
 /// <summary>
-/// Данные для визуализации
+/// Опции экспорта графика
 /// </summary>
-public class VisualizationData
+public class PlotExportOptions
 {
-    public ChartData NormsChart { get; set; } = new ChartData();
-    public ChartData DeviationsChart { get; set; } = new ChartData();
-    public Dictionary<string, object> Metadata { get; set; } = new Dictionary<string, object>();
+    public int Width { get; set; } = 1200;
+    public int Height { get; set; } = 800;
+    public int Resolution { get; set; } = 96;
+    public Color BackgroundColor { get; set; } = Color.White;
+    public bool IncludeLegend { get; set; } = true;
+    public string Format { get; set; } = "png";
+    public ImageFormat ImageFormat { get; set; } = ImageFormat.PNG;
+    public bool IncludeTitle { get; set; } = true;
+
+    public static PlotExportOptions Default => new();
 }
 
 /// <summary>
-/// Статистика участка
-/// </summary>
-public class SectionStatistics
-{
-    public string SectionName { get; set; } = string.Empty;
-    public int TotalRoutes { get; set; }
-    public int ProcessedRoutes { get; set; }
-    public decimal AverageDeviation { get; set; }
-    public DateTime LastAnalysis { get; set; }
-}
-
-/// <summary>
-/// Информация о хранилище
-/// </summary>
-public class StorageInfo
-{
-    public int TotalNorms { get; set; }
-    public int TotalPoints { get; set; }
-    public long DatabaseSizeBytes { get; set; }
-    public DateTime LastUpdate { get; set; }
-}
-
-/// <summary>
-/// Статистика кэша
-/// </summary>
-public class CacheStatistics
-{
-    public int TotalEntries { get; set; }
-    public int ExpiredEntries { get; set; }
-    public long CacheSizeBytes { get; set; }
-    public double HitRate { get; set; }
-}
-
-/// <summary>
-/// Статистика коэффициентов
-/// </summary>
-public class CoefficientStatistics
-{
-    public int TotalCoefficients { get; set; }
-    public int UniqueSeries { get; set; }
-    public decimal AverageCoefficient { get; set; }
-    public DateTime LastUpdate { get; set; }
-}
-
-/// <summary>
-/// Формат изображения для экспорта
+/// Форматы экспорта изображений
 /// </summary>
 public enum ImageFormat
 {

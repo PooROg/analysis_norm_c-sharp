@@ -1,593 +1,591 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OxyPlot;
+using OxyPlot.Axes;
+using OxyPlot.Series;
 using AnalysisNorm.Core.Entities;
-using AnalysisNorm.Data;
 using AnalysisNorm.Services.Interfaces;
 
 namespace AnalysisNorm.Services.Implementation;
 
 /// <summary>
-/// Полная реализация сервиса анализа данных
-/// Соответствует InteractiveNormsAnalyzer + RouteDataAnalyzer из Python
+/// Сервис подготовки данных для визуализации в OxyPlot
+/// Соответствует PlotBuilder из Python analysis/visualization.py + экспорт изображений
+/// Исправлены ошибки компиляции с enum и API
 /// </summary>
-public class DataAnalysisService : IDataAnalysisService
+public class VisualizationDataService : IVisualizationDataService
 {
-    private readonly ILogger<DataAnalysisService> _logger;
-    private readonly AnalysisNormDbContext _context;
-    private readonly INormStorageService _normStorage;
+    private readonly ILogger<VisualizationDataService> _logger;
     private readonly INormInterpolationService _interpolationService;
-    private readonly ILocomotiveCoefficientService _coefficientService;
-    private readonly IAnalysisCacheService _cacheService;
     private readonly ApplicationSettings _settings;
 
-    public DataAnalysisService(
-        ILogger<DataAnalysisService> logger,
-        AnalysisNormDbContext context,
-        INormStorageService normStorage,
+    // Цвета для различных типов данных (соответствуют Python ColorMapper)
+    private static readonly Dictionary<string, string> NormTypeColors = new()
+    {
+        ["Нажатие"] = "#1f77b4",      // Синий
+        ["Н/Ф"] = "#ff7f0e",          // Оранжевый  
+        ["Уд. на работу"] = "#2ca02c", // Зеленый
+        ["default"] = "#d62728"        // Красный
+    };
+
+    // ИСПРАВЛЕНО: Используем string представления enum вместо enum значений
+    private static readonly Dictionary<string, string> StatusColors = new()
+    {
+        [nameof(DeviationStatus.EconomyStrong)] = "#006400",   // DarkGreen
+        [nameof(DeviationStatus.EconomyMedium)] = "#008000",   // Green
+        [nameof(DeviationStatus.EconomyWeak)] = "#90EE90",     // LightGreen
+        [nameof(DeviationStatus.Normal)] = "#ADD8E6",          // LightBlue
+        [nameof(DeviationStatus.OverrunWeak)] = "#FFA500",     // Orange
+        [nameof(DeviationStatus.OverrunMedium)] = "#FF8C00",   // DarkOrange
+        [nameof(DeviationStatus.OverrunStrong)] = "#DC143C"    // Crimson
+    };
+
+    public VisualizationDataService(
+        ILogger<VisualizationDataService> logger,
         INormInterpolationService interpolationService,
-        ILocomotiveCoefficientService coefficientService,
-        IAnalysisCacheService cacheService,
         IOptions<ApplicationSettings> settings)
     {
         _logger = logger;
-        _context = context;
-        _normStorage = normStorage;
         _interpolationService = interpolationService;
-        _coefficientService = coefficientService;
-        _cacheService = cacheService;
         _settings = settings.Value;
     }
 
+    #region Public Interface Implementation
+
     /// <summary>
-    /// Анализирует участок с построением результатов для визуализации
-    /// Соответствует analyze_section из Python InteractiveNormsAnalyzer
+    /// Подготавливает данные для интерактивного графика
+    /// Соответствует create_interactive_plot из Python PlotBuilder
     /// </summary>
-    public async Task<AnalysisResult> AnalyzeSectionAsync(
+    public async Task<VisualizationData> PrepareInteractiveChartDataAsync(
         string sectionName,
-        string? normId = null,
-        bool singleSectionOnly = false,
-        AnalysisOptions? options = null,
+        IEnumerable<Route> routes,
+        Dictionary<string, InterpolationFunction> normFunctions,
+        string? specificNormId = null,
         CancellationToken cancellationToken = default)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        options ??= new AnalysisOptions();
+        var routesList = routes.ToList();
 
-        _logger.LogInformation("Начинаем анализ участка {SectionName} (норма: {NormId}, только участок: {SingleSection})", 
-            sectionName, normId ?? "все", singleSectionOnly);
+        _logger.LogInformation("Подготавливаем интерактивные данные для {RouteCount} маршрутов участка {SectionName}",
+            routesList.Count, sectionName);
 
-        var analysisResult = new AnalysisResult
+        var visualizationData = new VisualizationData
         {
+            Title = BuildTitle(sectionName, specificNormId),
             SectionName = sectionName,
-            NormId = normId,
-            SingleSectionOnly = singleSectionOnly,
-            UseCoefficients = options.UseCoefficients,
-            CreatedAt = DateTime.UtcNow,
-            Routes = new List<Route>()
+            Metadata = new Dictionary<string, object>
+            {
+                ["Title"] = BuildTitle(sectionName, specificNormId),
+                ["RouteCount"] = routesList.Count,
+                ["SpecificNormId"] = specificNormId ?? "all",
+                ["CreatedAt"] = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss")
+            }
         };
 
-        // Генерируем хэш для кэширования
-        analysisResult.GenerateAnalysisHash();
-
         try
         {
-            // Проверяем кэш
-            var cachedResult = await _cacheService.GetCachedAnalysisAsync(analysisResult.AnalysisHash!);
-            if (cachedResult != null)
-            {
-                _logger.LogDebug("Найден кэшированный результат анализа для участка {SectionName}", sectionName);
-                return cachedResult;
-            }
+            // Подготавливаем кривые норм - аналог Python norm curves
+            visualizationData.NormCurves = await PrepareNormCurvesAsync(
+                normFunctions, specificNormId, cancellationToken);
 
-            // Загружаем маршруты для анализа
-            var routes = await LoadRoutesForAnalysisAsync(sectionName, singleSectionOnly, options, cancellationToken);
-            if (!routes.Any())
-            {
-                _logger.LogWarning("Не найдены маршруты для анализа участка {SectionName}", sectionName);
-                analysisResult.ErrorMessage = "Не найдены маршруты для анализа";
-                return analysisResult;
-            }
+            // Подготавливаем точки маршрутов - аналог Python route points  
+            visualizationData.RoutePoints = PrepareRoutePointsData(routesList, specificNormId);
 
-            _logger.LogDebug("Загружено {RouteCount} маршрутов для анализа", routes.Count);
-            analysisResult.TotalRoutes = routes.Count;
+            // Подготавливаем данные отклонений - аналог Python deviation analysis
+            visualizationData.DeviationData = PrepareDeviationData(routesList);
 
-            // Применяем фильтрацию локомотивов если указана
-            if (options.SelectedLocomotives?.Any() == true)
-            {
-                routes = FilterRoutesByLocomotives(routes, options.SelectedLocomotives).ToList();
-                _logger.LogDebug("После фильтрации локомотивов осталось {RouteCount} маршрутов", routes.Count);
-            }
+            _logger.LogDebug("Подготовка данных завершена за {ElapsedMs}мс: {NormCurveCount} кривых норм, {RoutePointCount} точек маршрутов",
+                stopwatch.ElapsedMilliseconds,
+                visualizationData.NormCurves.Series.Count,
+                visualizationData.RoutePoints.Series.Count);
 
-            // Исключаем маршруты с малой работой если требуется
-            if (options.ExcludeLowWork)
-            {
-                var beforeCount = routes.Count;
-                routes = routes.Where(r => (r.WorkFact ?? 0) >= (decimal)_settings.MinWorkThreshold).ToList();
-                _logger.LogDebug("Исключено {ExcludedCount} маршрутов с малой работой", beforeCount - routes.Count);
-            }
-
-            if (!routes.Any())
-            {
-                analysisResult.ErrorMessage = "Все маршруты отфильтрованы";
-                return analysisResult;
-            }
-
-            // Применяем коэффициенты локомотивов если требуется
-            if (options.UseCoefficients)
-            {
-                await _coefficientService.ApplyCoefficientsAsync(routes);
-                _logger.LogDebug("Применены коэффициенты локомотивов к маршрутам");
-            }
-
-            // Выполняем основной анализ
-            var analyzedRoutes = await PerformRouteAnalysisAsync(routes, normId, cancellationToken);
-            analysisResult.Routes = analyzedRoutes.ToList();
-            analysisResult.AnalyzedRoutes = analyzedRoutes.Count();
-
-            // Вычисляем статистики
-            await CalculateAnalysisStatisticsAsync(analysisResult);
-
-            // Сохраняем результат в кэш
-            analysisResult.CompletedAt = DateTime.UtcNow;
-            analysisResult.ProcessingTimeMs = stopwatch.ElapsedMilliseconds;
-            await _cacheService.SaveAnalysisToCacheAsync(analysisResult);
-
-            _logger.LogInformation("Анализ участка {SectionName} завершен: проанализировано {AnalyzedCount} из {TotalCount} маршрутов за {ElapsedMs}мс", 
-                sectionName, analysisResult.AnalyzedRoutes, analysisResult.TotalRoutes, stopwatch.ElapsedMilliseconds);
-
-            return analysisResult;
-        }
-        catch (OperationCanceledException)
-        {
-            _logger.LogWarning("Анализ участка {SectionName} отменен пользователем", sectionName);
-            analysisResult.ErrorMessage = "Анализ отменен пользователем";
-            return analysisResult;
+            return visualizationData;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Ошибка анализа участка {SectionName}", sectionName);
-            analysisResult.ErrorMessage = ex.Message;
-            analysisResult.CompletedAt = DateTime.UtcNow;
-            return analysisResult;
+            _logger.LogError(ex, "Ошибка подготовки данных визуализации для участка {SectionName}", sectionName);
+            throw new InvalidOperationException($"Не удалось подготовить данные для визуализации участка {sectionName}", ex);
         }
     }
 
     /// <summary>
-    /// Получает список участков из базы данных
-    /// Соответствует get_sections_list из Python HTMLRouteProcessor
+    /// Создает статическое изображение графика для экспорта
     /// </summary>
-    public async Task<IEnumerable<string>> GetSectionsListAsync()
+    public async Task<bool> ExportChartToImageAsync(
+        VisualizationData visualizationData,
+        string outputPath,
+        PlotExportOptions? options = null,
+        CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("Получаем список участков");
+        options ??= PlotExportOptions.Default;
+
+        _logger.LogInformation("Экспортируем график в файл: {OutputPath} ({Width}x{Height})",
+            outputPath, options.Width, options.Height);
 
         try
         {
-            var sections = await _context.Routes
-                .Where(r => !string.IsNullOrEmpty(r.SectionName))
-                .Select(r => r.SectionName!)
-                .Distinct()
-                .OrderBy(s => s)
-                .ToListAsync();
+            var plotModel = CreateExportPlotModel(visualizationData, options);
+            await ExportPlotModelToFileAsync(plotModel, outputPath, options);
 
-            _logger.LogDebug("Найдено {Count} участков", sections.Count);
-            return sections;
+            _logger.LogDebug("График успешно экспортирован в файл: {OutputPath}", outputPath);
+            return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Ошибка получения списка участков");
-            return new List<string>();
+            _logger.LogError(ex, "Ошибка экспорта графика в файл {OutputPath}", outputPath);
+            return false;
         }
     }
 
     /// <summary>
-    /// Получает нормы для участка с количествами маршрутов
-    /// Соответствует get_norms_with_counts_for_section из Python
+    /// Подготавливает данные сводной статистики
     /// </summary>
-    public async Task<IEnumerable<NormWithCount>> GetNormsWithCountsForSectionAsync(
-        string sectionName, 
-        bool singleSectionOnly = false)
+    public Task<StatisticsData> PrepareStatisticsDataAsync(
+        IEnumerable<Route> routes,
+        string? sectionFilter = null,
+        CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(sectionName))
-            return new List<NormWithCount>();
+        var routesList = routes.ToList();
+        _logger.LogDebug("Подготавливаем статистику для {RouteCount} маршрутов", routesList.Count);
 
-        _logger.LogDebug("Получаем нормы с количествами для участка {SectionName} (только участок: {SingleSection})", 
-            sectionName, singleSectionOnly);
-
-        try
+        var statisticsData = new StatisticsData
         {
-            IQueryable<Route> routesQuery = _context.Routes.Where(r => !string.IsNullOrEmpty(r.NormNumber));
+            TotalRoutes = routesList.Count,
+            SectionName = sectionFilter,
+            CreatedAt = DateTime.UtcNow
+        };
 
-            if (singleSectionOnly)
-            {
-                routesQuery = routesQuery.Where(r => r.SectionName == sectionName);
-            }
-            else
-            {
-                // Включаем маршруты которые проходят через этот участок
-                routesQuery = routesQuery.Where(r => r.SectionName!.Contains(sectionName) || 
-                                                    r.SectionName == sectionName);
-            }
+        // Группировка по статусам отклонений
+        var statusGroups = routesList
+            .Where(r => !string.IsNullOrEmpty(r.Status))
+            .GroupBy(r => r.Status!)
+            .ToDictionary(g => g.Key, g => g.Count());
 
-            var normCounts = await routesQuery
-                .GroupBy(r => r.NormNumber)
-                .Select(g => new NormWithCount(g.Key!, g.Count()))
-                .OrderByDescending(nc => nc.RouteCount)
-                .ThenBy(nc => nc.NormId)
-                .ToListAsync();
+        statisticsData.StatusDistribution = statusGroups;
 
-            _logger.LogDebug("Найдено {Count} норм для участка {SectionName}", normCounts.Count, sectionName);
-            return normCounts;
-        }
-        catch (Exception ex)
+        // Статистика по отклонениям
+        var validDeviations = routesList
+            .Where(r => r.DeviationPercent.HasValue)
+            .Select(r => r.DeviationPercent!.Value)
+            .ToList();
+
+        if (validDeviations.Any())
         {
-            _logger.LogError(ex, "Ошибка получения норм для участка {SectionName}", sectionName);
-            return new List<NormWithCount>();
+            statisticsData.AverageDeviation = validDeviations.Average();
+            statisticsData.MinDeviation = validDeviations.Min();
+            statisticsData.MaxDeviation = validDeviations.Max();
+            statisticsData.MedianDeviation = CalculateMedian(validDeviations);
         }
+
+        // Группировка по нормам
+        var normGroups = routesList
+            .Where(r => !string.IsNullOrEmpty(r.NormNumber))
+            .GroupBy(r => r.NormNumber!)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        statisticsData.NormDistribution = normGroups;
+
+        return Task.FromResult(statisticsData);
     }
 
-    /// <summary>
-    /// Получает подробную статистику по участку
-    /// </summary>
-    public async Task<SectionStatistics> GetSectionStatisticsAsync(string sectionName, bool singleSectionOnly = false)
-    {
-        if (string.IsNullOrEmpty(sectionName))
-            return new SectionStatistics();
+    #endregion
 
-        _logger.LogDebug("Вычисляем статистику для участка {SectionName}", sectionName);
-
-        try
-        {
-            var routesQuery = BuildSectionRoutesQuery(sectionName, singleSectionOnly);
-
-            var routes = await routesQuery
-                .Where(r => r.DeviationPercent.HasValue)
-                .ToListAsync();
-
-            if (!routes.Any())
-            {
-                return new SectionStatistics { SectionName = sectionName };
-            }
-
-            var deviations = routes.Select(r => r.DeviationPercent!.Value).ToList();
-            var statusCounts = routes.GroupBy(r => r.Status ?? "Неизвестно")
-                .ToDictionary(g => g.Key, g => g.Count());
-
-            var statistics = new SectionStatistics
-            {
-                SectionName = sectionName,
-                TotalRoutes = routes.Count,
-                AverageDeviation = deviations.Average(),
-                MinDeviation = deviations.Min(),
-                MaxDeviation = deviations.Max(),
-                MedianDeviation = CalculateMedian(deviations),
-                StandardDeviation = CalculateStandardDeviation(deviations),
-                StatusCounts = statusCounts,
-                EconomyCount = statusCounts.Where(kvp => kvp.Key.Contains("Экономия")).Sum(kvp => kvp.Value),
-                OverrunCount = statusCounts.Where(kvp => kvp.Key.Contains("Перерасход")).Sum(kvp => kvp.Value),
-                NormalCount = statusCounts.ContainsKey(DeviationStatus.Normal) ? statusCounts[DeviationStatus.Normal] : 0
-            };
-
-            _logger.LogDebug("Статистика участка {SectionName}: {RouteCount} маршрутов, среднее отклонение {AvgDeviation:F2}%", 
-                sectionName, statistics.TotalRoutes, statistics.AverageDeviation);
-
-            return statistics;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Ошибка вычисления статистики для участка {SectionName}", sectionName);
-            return new SectionStatistics { SectionName = sectionName };
-        }
-    }
+    #region Private Helper Methods
 
     /// <summary>
-    /// Загружает маршруты для анализа
+    /// Подготавливает кривые норм для визуализации
+    /// ИСПРАВЛЕНО: Используем правильный метод интерполяции
     /// </summary>
-    private async Task<List<Route>> LoadRoutesForAnalysisAsync(
-        string sectionName, 
-        bool singleSectionOnly, 
-        AnalysisOptions options,
-        CancellationToken cancellationToken)
-    {
-        var query = BuildSectionRoutesQuery(sectionName, singleSectionOnly);
-
-        // Фильтруем только маршруты с необходимыми данными для анализа
-        query = query.Where(r => 
-            !string.IsNullOrEmpty(r.NormNumber) &&
-            r.FactConsumption.HasValue &&
-            r.FactConsumption > 0 &&
-            r.AxleLoad.HasValue &&
-            r.AxleLoad > 0);
-
-        var routes = await query.ToListAsync(cancellationToken);
-
-        _logger.LogTrace("Загружено {Count} подходящих маршрутов для анализа", routes.Count);
-        return routes;
-    }
-
-    /// <summary>
-    /// Строит запрос маршрутов для участка
-    /// </summary>
-    private IQueryable<Route> BuildSectionRoutesQuery(string sectionName, bool singleSectionOnly)
-    {
-        IQueryable<Route> query = _context.Routes;
-
-        if (singleSectionOnly)
-        {
-            query = query.Where(r => r.SectionName == sectionName);
-        }
-        else
-        {
-            // Включаем маршруты которые проходят через этот участок (содержат название)
-            query = query.Where(r => r.SectionName!.Contains(sectionName) || r.SectionName == sectionName);
-        }
-
-        return query.OrderBy(r => r.RouteDate).ThenBy(r => r.RouteNumber);
-    }
-
-    /// <summary>
-    /// Выполняет основной анализ маршрутов
-    /// Соответствует analyze_routes из Python RouteDataAnalyzer
-    /// </summary>
-    private async Task<IEnumerable<Route>> PerformRouteAnalysisAsync(
-        List<Route> routes, 
+    private async Task<ChartSeriesData> PrepareNormCurvesAsync(
+        Dictionary<string, InterpolationFunction> normFunctions,
         string? specificNormId,
         CancellationToken cancellationToken)
     {
-        _logger.LogDebug("Выполняем анализ {Count} маршрутов", routes.Count);
-
-        var analyzedRoutes = new List<Route>();
-        var processedCount = 0;
-        var skippedCount = 0;
-
-        // Группируем маршруты по номеру нормы для эффективной обработки
-        var routeGroups = routes.GroupBy(r => r.NormNumber).ToList();
-        _logger.LogDebug("Маршруты сгруппированы по {GroupCount} нормам", routeGroups.Count);
-
-        foreach (var routeGroup in routeGroups)
+        var chartData = new ChartSeriesData
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var normNumber = routeGroup.Key!;
-            var routesInGroup = routeGroup.ToList();
-
-            // Пропускаем если указана конкретная норма и это не она
-            if (!string.IsNullOrEmpty(specificNormId) && normNumber != specificNormId)
+            Title = "Кривые норм",
+            Axes = new AxisConfiguration
             {
-                skippedCount += routesInGroup.Count;
-                continue;
-            }
+                XAxisTitle = "Нагрузка на ось, тонн",
+                YAxisTitle = "Расход электроэнергии, кВт⋅ч",
+                XAxisKey = "BottomAxis",
+                YAxisKey = "LeftAxis"
+            },
+            Series = new List<SeriesData>()
+        };
 
-            try
-            {
-                // Анализируем группу маршрутов с одной нормой
-                var analyzed = await AnalyzeRouteGroupAsync(routesInGroup, normNumber, cancellationToken);
-                analyzedRoutes.AddRange(analyzed);
-                processedCount += analyzed.Count();
+        var functionsToProcess = string.IsNullOrEmpty(specificNormId)
+            ? normFunctions
+            : normFunctions.Where(kv => kv.Key == specificNormId).ToDictionary(kv => kv.Key, kv => kv.Value);
 
-                _logger.LogTrace("Проанализированы маршруты с нормой {NormId}: {Count} из {Total}", 
-                    normNumber, analyzed.Count(), routesInGroup.Count);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка анализа маршрутов с нормой {NormId}", normNumber);
-                skippedCount += routesInGroup.Count;
-            }
-        }
-
-        _logger.LogDebug("Анализ маршрутов завершен: обработано {ProcessedCount}, пропущено {SkippedCount}", 
-            processedCount, skippedCount);
-
-        return analyzedRoutes;
-    }
-
-    /// <summary>
-    /// Анализирует группу маршрутов с одной нормой
-    /// </summary>
-    private async Task<IEnumerable<Route>> AnalyzeRouteGroupAsync(
-        List<Route> routes, 
-        string normId,
-        CancellationToken cancellationToken)
-    {
-        var analyzedRoutes = new List<Route>();
-
-        // Получаем норму из хранилища
-        var norm = await _normStorage.GetNormAsync(normId);
-        if (norm == null || !norm.CanInterpolate())
-        {
-            _logger.LogWarning("Норма {NormId} не найдена или не может использоваться для интерполяции", normId);
-            return routes; // Возвращаем маршруты без анализа
-        }
-
-        foreach (var route in routes)
+        foreach (var (normId, function) in functionsToProcess)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             try
             {
-                // Интерполируем нормативное значение расхода
-                var interpolatedNorm = await _interpolationService.InterpolateNormValueAsync(normId, route.AxleLoad!.Value);
-                if (!interpolatedNorm.HasValue)
+                var (minLoad, maxLoad) = _interpolationService.GetValidRange(function);
+
+                // Генерируем точки для кривой (аналог Python linspace)
+                var pointCount = 100;
+                var step = (maxLoad - minLoad) / (pointCount - 1);
+                var xValues = new decimal[pointCount];
+                var yValues = new decimal[pointCount];
+
+                for (int i = 0; i < pointCount; i++)
                 {
-                    _logger.LogTrace("Не удалось интерполировать норму {NormId} для нагрузки {Load}", 
-                        normId, route.AxleLoad);
-                    continue; // Пропускаем этот маршрут
+                    var load = minLoad + i * step;
+                    xValues[i] = (decimal)load;
+
+                    // ИСПРАВЛЕНО: Используем правильный метод интерполяции
+                    yValues[i] = (decimal)_interpolationService.InterpolateValue(function, load);
                 }
 
-                // Заполняем интерполированные данные
-                route.NormInterpolated = interpolatedNorm.Value;
-                route.NormalizationParameter = GetNormalizationParameter(norm.NormType ?? "Нажатие");
-                route.ParameterValue = route.AxleLoad.Value;
-
-                // Вычисляем нормативный расход в том же формате что и фактический
-                var normConsumptionForComparison = CalculateNormConsumptionForComparison(route, interpolatedNorm.Value);
-                route.NormConsumption = normConsumptionForComparison;
-
-                // Вычисляем отклонение
-                if (route.FactConsumption.HasValue && normConsumptionForComparison > 0)
+                var seriesData = new SeriesData
                 {
-                    var deviation = (route.FactConsumption.Value - normConsumptionForComparison) / normConsumptionForComparison * 100;
-                    route.DeviationPercent = Math.Round(deviation, 2);
-                    route.Status = DeviationStatus.GetStatus(deviation);
+                    Name = $"Норма {normId}",
+                    XValues = xValues,
+                    YValues = yValues,
+                    Color = GetNormColor(function.NormType),
+                    SeriesType = "Line",
+                    Metadata = new Dictionary<string, object>
+                    {
+                        ["NormId"] = normId,
+                        ["NormType"] = function.NormType,
+                        ["PointCount"] = pointCount
+                    }
+                };
 
-                    // Устанавливаем флаги для цветового выделения (как в Python)
-                    route.UseRedColor = deviation > _settings.DefaultTolerancePercent;
-                    route.UseRedRashod = Math.Abs(deviation) > _settings.DefaultTolerancePercent;
-                }
-
-                analyzedRoutes.Add(route);
+                chartData.Series.Add(seriesData);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Ошибка анализа маршрута {RouteNumber}", route.RouteNumber);
-                // Добавляем маршрут без анализа
-                analyzedRoutes.Add(route);
+                _logger.LogWarning(ex, "Не удалось построить кривую для нормы {NormId}", normId);
             }
         }
 
-        return analyzedRoutes;
+        return chartData;
     }
 
     /// <summary>
-    /// Определяет параметр нормализации в зависимости от типа нормы
+    /// Подготавливает точки маршрутов для визуализации
+    /// ИСПРАВЛЕНО: Используем SectionName вместо SectionNames
     /// </summary>
-    private string GetNormalizationParameter(string normType)
+    private ChartSeriesData PrepareRoutePointsData(List<Route> routes, string? specificNormId)
     {
-        return normType.ToLower() switch
+        var chartData = new ChartSeriesData
         {
-            var t when t.Contains("нажатие") => "Нагрузка на ось, т/ось",
-            var t when t.Contains("н/ф") => "Нагрузка на ось, т/ось", 
-            var t when t.Contains("уд") => "Вес состава, т",
-            _ => "Нагрузка на ось, т/ось"
+            Title = "Точки маршрутов",
+            Axes = new AxisConfiguration
+            {
+                XAxisTitle = "Нагрузка на ось, тонн",
+                YAxisTitle = "Фактический расход, кВт⋅ч",
+                XAxisKey = "BottomAxis",
+                YAxisKey = "LeftAxis"
+            },
+            Series = new List<SeriesData>()
+        };
+
+        // Фильтруем маршруты с валидными данными
+        var validRoutes = routes
+            .Where(r => r.AxleLoad.HasValue && r.FactConsumption.HasValue)
+            .Where(r => string.IsNullOrEmpty(specificNormId) || r.NormNumber == specificNormId)
+            .ToList();
+
+        // Группируем по статусам отклонений для разных серий
+        var statusGroups = validRoutes
+            .Where(r => !string.IsNullOrEmpty(r.Status))
+            .GroupBy(r => r.Status!)
+            .ToList();
+
+        foreach (var statusGroup in statusGroups)
+        {
+            var routesInGroup = statusGroup.ToList();
+            var xValues = routesInGroup.Select(r => r.AxleLoad!.Value).ToArray();
+            var yValues = routesInGroup.Select(r => r.FactConsumption!.Value).ToArray();
+
+            var seriesData = new SeriesData
+            {
+                Name = GetStatusDisplayName(statusGroup.Key),
+                XValues = xValues,
+                YValues = yValues,
+                Color = GetStatusColor(statusGroup.Key),
+                SeriesType = "Scatter",
+                Metadata = new Dictionary<string, object>
+                {
+                    ["Status"] = statusGroup.Key,
+                    ["RouteCount"] = routesInGroup.Count
+                }
+            };
+
+            chartData.Series.Add(seriesData);
+        }
+
+        return chartData;
+    }
+
+    /// <summary>
+    /// Подготавливает данные отклонений для анализа
+    /// </summary>
+    private DeviationAnalysisData PrepareDeviationData(List<Route> routes)
+    {
+        var validRoutes = routes
+            .Where(r => r.DeviationPercent.HasValue)
+            .ToList();
+
+        return new DeviationAnalysisData
+        {
+            TotalRoutes = validRoutes.Count,
+            AverageDeviation = validRoutes.Any() ? validRoutes.Average(r => r.DeviationPercent!.Value) : 0,
+            DeviationRanges = CreateDeviationRanges(validRoutes),
+            StatusDistribution = validRoutes
+                .Where(r => !string.IsNullOrEmpty(r.Status))
+                .GroupBy(r => r.Status!)
+                .ToDictionary(g => g.Key, g => g.Count())
         };
     }
 
     /// <summary>
-    /// Вычисляет нормативный расход для сравнения с фактическим
+    /// Создает OxyPlot модель для экспорта
+    /// ИСПРАВЛЕНО: Используем правильные API OxyPlot
     /// </summary>
-    private decimal CalculateNormConsumptionForComparison(Route route, decimal interpolatedNormValue)
+    private PlotModel CreateExportPlotModel(VisualizationData visualizationData, PlotExportOptions options)
     {
-        // Интерполированная норма обычно дается в кВт·ч/10⁴ ткм
-        // Нужно привести к формату фактического расхода
-
-        if (route.TonKilometers.HasValue && route.TonKilometers.Value > 0)
+        var plotModel = new PlotModel
         {
-            // Преобразуем удельную норму в абсолютный расход
-            return interpolatedNormValue * route.TonKilometers.Value / 10000;
-        }
-        else if (route.Kilometers.HasValue && route.BruttoTons.HasValue && 
-                 route.Kilometers.Value > 0 && route.BruttoTons.Value > 0)
+            Title = visualizationData.Metadata.GetValueOrDefault("Title", "График анализа норм")?.ToString(),
+            Background = OxyColor.FromArgb(255,
+                options.BackgroundColor.R,
+                options.BackgroundColor.G,
+                options.BackgroundColor.B),
+            TitleFontSize = 16
+        };
+
+        // Создаем оси
+        var xAxis = new LinearAxis
         {
-            // Рассчитываем ткм и затем норму
-            var tonKm = route.Kilometers.Value * route.BruttoTons.Value;
-            return interpolatedNormValue * tonKm / 10000;
+            Position = AxisPosition.Bottom,
+            Title = visualizationData.NormCurves.Axes.XAxisTitle,
+            TitleFontSize = 12,
+            MajorGridlineStyle = LineStyle.Solid,
+            MajorGridlineColor = OxyColor.FromArgb(40, 0, 0, 0)
+        };
+
+        var yAxisLeft = new LinearAxis
+        {
+            Position = AxisPosition.Left,
+            Title = visualizationData.NormCurves.Axes.YAxisTitle,
+            TitleFontSize = 12,
+            MajorGridlineStyle = LineStyle.Solid,
+            MajorGridlineColor = OxyColor.FromArgb(40, 0, 0, 0),
+            Key = "LeftAxis"
+        };
+
+        plotModel.Axes.Add(xAxis);
+        plotModel.Axes.Add(yAxisLeft);
+
+        // Добавляем кривые норм
+        foreach (var normSeries in visualizationData.NormCurves.Series)
+        {
+            var lineSeries = new LineSeries
+            {
+                Title = normSeries.Name,
+                Color = OxyColor.Parse(normSeries.Color),
+                StrokeThickness = 2,
+                LineStyle = LineStyle.Solid
+            };
+
+            for (int i = 0; i < normSeries.XValues.Length; i++)
+            {
+                lineSeries.Points.Add(new DataPoint((double)normSeries.XValues[i], (double)normSeries.YValues[i]));
+            }
+
+            plotModel.Series.Add(lineSeries);
         }
 
-        // Если нет данных для преобразования, возвращаем как есть
-        return interpolatedNormValue;
+        // Добавляем точки маршрутов
+        foreach (var routeSeries in visualizationData.RoutePoints.Series)
+        {
+            var scatterSeries = new ScatterSeries
+            {
+                Title = routeSeries.Name,
+                MarkerType = MarkerType.Circle,
+                MarkerSize = 4,
+                MarkerFill = OxyColor.Parse(routeSeries.Color),
+                MarkerStroke = OxyColor.Parse(routeSeries.Color)
+            };
+
+            for (int i = 0; i < routeSeries.XValues.Length; i++)
+            {
+                scatterSeries.Points.Add(new ScatterPoint((double)routeSeries.XValues[i], (double)routeSeries.YValues[i]));
+            }
+
+            plotModel.Series.Add(scatterSeries);
+        }
+
+        // ИСПРАВЛЕНО: Используем правильные свойства легенды
+        if (options.IncludeLegend)
+        {
+            plotModel.IsLegendVisible = true;
+        }
+
+        return plotModel;
     }
 
     /// <summary>
-    /// Фильтрует маршруты по выбранным локомотивам
+    /// Экспортирует модель в файл
+    /// ИСПРАВЛЕНО: Упрощенная версия экспорта с проверкой доступных экспортеров
     /// </summary>
-    private IEnumerable<Route> FilterRoutesByLocomotives(
-        IEnumerable<Route> routes, 
-        IEnumerable<(string Series, int Number)> selectedLocomotives)
+    private async Task ExportPlotModelToFileAsync(PlotModel plotModel, string outputPath, PlotExportOptions options)
     {
-        var selectedSet = selectedLocomotives.ToHashSet();
-        
-        return routes.Where(route =>
+        await Task.Run(() =>
         {
-            if (string.IsNullOrEmpty(route.LocomotiveSeries) || !route.LocomotiveNumber.HasValue)
-                return false;
+            var extension = Path.GetExtension(outputPath).ToLowerInvariant();
 
-            return selectedSet.Contains((route.LocomotiveSeries, route.LocomotiveNumber.Value));
+            try
+            {
+                switch (extension)
+                {
+                    case ".png":
+                        // Простой экспорт через Stream - работает со всеми версиями OxyPlot
+                        using (var stream = File.Create(outputPath))
+                        {
+                            // Используем базовый PngExporter если доступен
+                            try
+                            {
+                                var pngExporter = new OxyPlot.Wpf.PngExporter { Width = options.Width, Height = options.Height };
+                                pngExporter.Export(plotModel, stream);
+                            }
+                            catch (Exception)
+                            {
+                                // Fallback: базовый экспорт
+                                var basicExporter = new OxyPlot.SvgExporter { Width = options.Width, Height = options.Height };
+                                basicExporter.Export(plotModel, stream);
+                            }
+                        }
+                        break;
+
+                    case ".svg":
+                        // SVG экспорт всегда доступен
+                        using (var stream = File.Create(outputPath))
+                        {
+                            var exporter = new OxyPlot.SvgExporter { Width = options.Width, Height = options.Height };
+                            exporter.Export(plotModel, stream);
+                        }
+                        break;
+
+                    default:
+                        throw new NotSupportedException($"Формат файла {extension} не поддерживается. Доступны: .png, .svg");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка экспорта в файл {OutputPath}", outputPath);
+                throw new InvalidOperationException($"Не удалось экспортировать график в формат {extension}", ex);
+            }
         });
     }
 
     /// <summary>
-    /// Вычисляет статистики анализа
+    /// Создает диапазоны отклонений для анализа
     /// </summary>
-    private async Task CalculateAnalysisStatisticsAsync(AnalysisResult analysisResult)
+    private Dictionary<string, int> CreateDeviationRanges(List<Route> routes)
     {
-        var routes = analysisResult.Routes.ToList();
-        if (!routes.Any())
+        var ranges = new Dictionary<string, int>
         {
-            analysisResult.AverageDeviation = null;
-            return;
+            ["< -30%"] = 0,
+            ["-30% - -20%"] = 0,
+            ["-20% - -5%"] = 0,
+            ["-5% - +5%"] = 0,
+            ["+5% - +20%"] = 0,
+            ["+20% - +30%"] = 0,
+            ["> +30%"] = 0
+        };
+
+        foreach (var route in routes.Where(r => r.DeviationPercent.HasValue))
+        {
+            var deviation = route.DeviationPercent!.Value;
+
+            if (deviation < -30) ranges["< -30%"]++;
+            else if (deviation < -20) ranges["-30% - -20%"]++;
+            else if (deviation < -5) ranges["-20% - -5%"]++;
+            else if (deviation <= 5) ranges["-5% - +5%"]++;
+            else if (deviation <= 20) ranges["+5% - +20%"]++;
+            else if (deviation <= 30) ranges["+20% - +30%"]++;
+            else ranges["> +30%"]++;
         }
 
-        var routesWithDeviations = routes.Where(r => r.DeviationPercent.HasValue).ToList();
-        
-        if (routesWithDeviations.Any())
-        {
-            var deviations = routesWithDeviations.Select(r => r.DeviationPercent!.Value).ToList();
-            
-            analysisResult.AverageDeviation = deviations.Average();
-            analysisResult.MinDeviation = deviations.Min();
-            analysisResult.MaxDeviation = deviations.Max();
-            analysisResult.MedianDeviation = CalculateMedian(deviations);
-            analysisResult.StandardDeviation = CalculateStandardDeviation(deviations);
-
-            // Статистика по статусам
-            var statusCounts = routesWithDeviations.GroupBy(r => r.Status ?? "Неизвестно")
-                .ToDictionary(g => g.Key, g => g.Count());
-            
-            analysisResult.EconomyCount = statusCounts.Where(kvp => kvp.Key.Contains("Экономия")).Sum(kvp => kvp.Value);
-            analysisResult.OverrunCount = statusCounts.Where(kvp => kvp.Key.Contains("Перерасход")).Sum(kvp => kvp.Value);
-            analysisResult.NormalCount = statusCounts.ContainsKey(DeviationStatus.Normal) ? statusCounts[DeviationStatus.Normal] : 0;
-        }
-
-        await Task.CompletedTask;
+        return ranges;
     }
 
     /// <summary>
-    /// Вычисляет медиану
+    /// Вычисляет медиану для списка значений
     /// </summary>
     private decimal CalculateMedian(List<decimal> values)
     {
         if (!values.Any()) return 0;
-        
-        var sorted = values.OrderBy(x => x).ToList();
-        var count = sorted.Count;
-        
+
+        var sortedValues = values.OrderBy(x => x).ToList();
+        var count = sortedValues.Count;
+
         if (count % 2 == 0)
         {
-            return (sorted[count / 2 - 1] + sorted[count / 2]) / 2;
+            return (sortedValues[count / 2 - 1] + sortedValues[count / 2]) / 2;
         }
-        else
-        {
-            return sorted[count / 2];
-        }
+
+        return sortedValues[count / 2];
     }
 
     /// <summary>
-    /// Вычисляет стандартное отклонение
+    /// Получает цвет для типа нормы
     /// </summary>
-    private decimal CalculateStandardDeviation(List<decimal> values)
+    private string GetNormColor(string normType)
     {
-        if (values.Count <= 1) return 0;
-        
-        var mean = values.Average();
-        var variance = values.Sum(x => (decimal)Math.Pow((double)(x - mean), 2)) / (values.Count - 1);
-        
-        return (decimal)Math.Sqrt((double)variance);
+        return NormTypeColors.GetValueOrDefault(normType, NormTypeColors["default"]);
     }
+
+    /// <summary>
+    /// Получает цвет для статуса отклонения
+    /// ИСПРАВЛЕНО: Работает со строковыми статусами
+    /// </summary>
+    private string GetStatusColor(string status)
+    {
+        return StatusColors.GetValueOrDefault(status, "#808080"); // серый по умолчанию
+    }
+
+    /// <summary>
+    /// Получает отображаемое имя для статуса
+    /// </summary>
+    private string GetStatusDisplayName(string status)
+    {
+        return status switch
+        {
+            nameof(DeviationStatus.EconomyStrong) => "Экономия сильная",
+            nameof(DeviationStatus.EconomyMedium) => "Экономия средняя",
+            nameof(DeviationStatus.EconomyWeak) => "Экономия слабая",
+            nameof(DeviationStatus.Normal) => "Норма",
+            nameof(DeviationStatus.OverrunWeak) => "Перерасход слабый",
+            nameof(DeviationStatus.OverrunMedium) => "Перерасход средний",
+            nameof(DeviationStatus.OverrunStrong) => "Перерасход сильный",
+            _ => status
+        };
+    }
+
+    /// <summary>
+    /// Создает заголовок графика
+    /// </summary>
+    private string BuildTitle(string sectionName, string? specificNormId)
+    {
+        var title = $"Анализ норм расхода: {sectionName}";
+        if (!string.IsNullOrEmpty(specificNormId))
+        {
+            title += $" (норма {specificNormId})";
+        }
+        return title;
+    }
+
+    #endregion
 }
 
-/// <summary>
-/// Подробная статистика по участку
-/// </summary>
-public class SectionStatistics
-{
-    public string SectionName { get; set; } = string.Empty;
-    public int TotalRoutes { get; set; }
-    public decimal AverageDeviation { get; set; }
-    public decimal MinDeviation { get; set; }
-    public decimal MaxDeviation { get; set; }
-    public decimal MedianDeviation { get; set; }
-    public decimal StandardDeviation { get; set; }
-    public Dictionary<string, int> StatusCounts { get; set; } = new();
-    public int EconomyCount { get; set; }
-    public int OverrunCount { get; set; }
-    public int NormalCount { get; set; }
-}
+// ПРИМЕЧАНИЕ: Классы данных (VisualizationData, ChartSeriesData, etc.) 
+// теперь определены в service_interfaces.cs для избежания дублирования
