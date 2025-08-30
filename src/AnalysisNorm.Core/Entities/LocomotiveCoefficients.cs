@@ -73,7 +73,7 @@ public class LocomotiveCoefficient
     public static string NormalizeSeries(string series)
     {
         if (string.IsNullOrEmpty(series)) return string.Empty;
-        
+
         // Убираем все кроме букв и цифр, приводим к верхнему регистру
         var normalized = Regex.Replace(series.ToUpper(), @"[^А-ЯA-Z0-9]", string.Empty);
         return normalized;
@@ -87,6 +87,16 @@ public class LocomotiveCoefficient
         SeriesNormalized = NormalizeSeries(Series);
         DeviationPercent = (Coefficient - 1.0m) * 100.0m;
     }
+    
+        /// <summary>
+    /// Фактическая работа (недостающее свойство)
+    /// </summary>
+    public decimal? WorkFact { get; set; }
+
+    /// <summary>
+    /// Нормативная работа (недостающее свойство)
+    /// </summary>
+    public decimal? WorkNorm { get; set; }
 }
 
 /// <summary>

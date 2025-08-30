@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
   <!-- === CORE DEPENDENCIES === -->
@@ -39,8 +40,10 @@
     <!-- Image Processing -->
     <PackageReference Include="System.Drawing.Common" Version="9.0.0" />
     
-    <!-- OxyPlot for Charts (Core only for Services layer) -->
+    <!-- ИСПРАВЛЕНО: OxyPlot пакеты - добавлен SkiaSharp для экспорта изображений без WPF зависимостей -->
     <PackageReference Include="OxyPlot.Core" Version="2.2.0" />
+    <PackageReference Include="OxyPlot.SkiaSharp" Version="2.2.0" />
+    <!-- УДАЛЕНО: OxyPlot.Wpf - недоступен в Services слое -->
     
     <!-- Logging -->
     <PackageReference Include="Serilog" Version="4.1.0" />
@@ -54,6 +57,9 @@
     <!-- Memory and Performance -->
     <PackageReference Include="System.Memory" Version="4.6.0" />
     <PackageReference Include="System.Threading.Tasks.Extensions" Version="4.6.0" />
+    
+    <!-- ДОБАВЛЕНО: Encoding detection для cp1251 поддержки -->
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="9.0.0" />
   </ItemGroup>
 
 </Project>

@@ -3,11 +3,11 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
-    <UseWPF>true</UseWPF>
-    <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <LangVersion>latest</LangVersion>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <!-- === PROJECT REFERENCES === -->
@@ -17,46 +17,32 @@
     <ProjectReference Include="..\AnalysisNorm.Services\AnalysisNorm.Services.csproj" />
   </ItemGroup>
 
-  <!-- === WPF AND UI PACKAGES === -->
+  <!-- === NUGET PACKAGES === -->
   <ItemGroup>
-    <!-- MaterialDesign for WPF -->
-    <PackageReference Include="MaterialDesignThemes" Version="5.1.0" />
-    <PackageReference Include="MaterialDesignColors" Version="3.1.0" />
-    
-    <!-- OxyPlot for WPF Charts -->
-    <PackageReference Include="OxyPlot.Wpf" Version="2.2.0" />
-    <PackageReference Include="OxyPlot.Core" Version="2.2.0" />
-    
-    <!-- Microsoft Extensions for WPF -->
+    <!-- Microsoft Extensions for DI and Configuration -->
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.0" />
     
-    <!-- Excel Export -->
-    <PackageReference Include="EPPlus" Version="7.2.2" />
+    <!-- ИСПРАВЛЕНО: OxyPlot для WPF - правильные пакеты -->
+    <PackageReference Include="OxyPlot.Core" Version="2.2.0" />
+    <PackageReference Include="OxyPlot.Wpf" Version="2.2.0" />
+    <PackageReference Include="OxyPlot.SkiaSharp" Version="2.2.0" />
     
-    <!-- Additional WPF Support -->
-    <PackageReference Include="System.Windows.Extensions" Version="9.0.0" />
+    <!-- WPF UI Components -->
+    <PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" Version="1.1.39" />
     
-    <!-- Serilog for WPF -->
+    <!-- Logging -->
     <PackageReference Include="Serilog" Version="4.1.0" />
     <PackageReference Include="Serilog.Extensions.Logging" Version="8.0.0" />
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
     <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
-    <PackageReference Include="Serilog.Sinks.Debug" Version="3.0.0" />
-  </ItemGroup>
-
-  <!-- === APPLICATION ICON AND RESOURCES === -->
-  <ItemGroup>
-    <Resource Include="Resources\**\*" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Update="appsettings.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+    
+    <!-- JSON Processing -->
+    <PackageReference Include="System.Text.Json" Version="9.0.0" />
   </ItemGroup>
 
 </Project>

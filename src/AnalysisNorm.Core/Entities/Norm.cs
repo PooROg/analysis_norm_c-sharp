@@ -110,57 +110,6 @@ public class NormPoint
 }
 
 /// <summary>
-/// Обновленная статистика обработки файлов (исправлены init-only properties)
-/// </summary>
-public class ProcessingStatistics
-{
-    /// <summary>
-    /// Общее количество файлов
-    /// </summary>
-    public int TotalFiles { get; set; }
-
-    /// <summary>
-    /// Общее количество маршрутов
-    /// </summary>
-    public int TotalRoutes { get; set; }
-
-    /// <summary>
-    /// Количество обработанных маршрутов
-    /// </summary>
-    public int ProcessedRoutes { get; set; }
-
-    /// <summary>
-    /// Количество дубликатов
-    /// </summary>
-    public int DuplicateRoutes { get; set; }
-
-    /// <summary>
-    /// Время обработки
-    /// </summary>
-    public TimeSpan ProcessingTime { get; set; }
-
-    /// <summary>
-    /// Ошибки обработки
-    /// </summary>
-    public List<string> Errors { get; set; } = new List<string>();
-
-    /// <summary>
-    /// Предупреждения
-    /// </summary>
-    public List<string> Warnings { get; set; } = new List<string>();
-
-    /// <summary>
-    /// Проверяет, была ли обработка успешной
-    /// </summary>
-    public bool IsSuccessful => Errors.Count == 0;
-
-    /// <summary>
-    /// Возвращает процент успешно обработанных маршрутов
-    /// </summary>
-    public double SuccessRate => TotalRoutes > 0 ? (double)ProcessedRoutes / TotalRoutes * 100 : 0;
-}
-
-/// <summary>
 /// Настройки приложения с недостающими свойствами
 /// </summary>
 public class ApplicationSettings

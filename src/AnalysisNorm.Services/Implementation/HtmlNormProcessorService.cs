@@ -1,15 +1,20 @@
+using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 using HtmlAgilityPack;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using AnalysisNorm.Core.Entities;
 using AnalysisNorm.Services.Interfaces;
+// ИСПРАВЛЕНО: Explicit using alias для разрешения конфликтов
+using CoreProcessingResult = AnalysisNorm.Core.Entities.ProcessingResult<System.Collections.Generic.IEnumerable<AnalysisNorm.Core.Entities.Norm>>;
+using CoreProcessingStatistics = AnalysisNorm.Core.Entities.ProcessingStatistics;
 
 namespace AnalysisNorm.Services.Implementation;
 
 /// <summary>
 /// Процессор HTML файлов норм расхода электроэнергии
 /// Точное соответствие HTMLNormProcessor из Python analysis/html_norm_processor.py
+/// ИСПРАВЛЕНО: Правильные возвращаемые типы из AnalysisNorm.Core.Entities
 /// </summary>
 public class HtmlNormProcessorService : IHtmlNormProcessorService
 {
@@ -18,110 +23,163 @@ public class HtmlNormProcessorService : IHtmlNormProcessorService
     private readonly ITextNormalizer _textNormalizer;
     private readonly ApplicationSettings _settings;
 
-    // Processing statistics
-    private readonly ProcessingStatistics _stats = new();
-    
-    // Compiled regex patterns for norm extraction
-    private static readonly Regex NormIdPattern = new(@"(?:Норма|НОРМА)\s*№?\s*(\d+(?:\.\d+)?(?:\-\d+)?)", 
+    // ИСПРАВЛЕНО: Используем CoreProcessingStatistics из AnalysisNorm.Core.Entities
+    private readonly CoreProcessingStatistics _stats = new();
+
+    // Compiled regex patterns for norm extraction (аналог Python patterns)
+    private static readonly Regex NormIdPattern = new(@"(?:Норма|НОРМА)\s*№?\s*(\d+(?:\.\d+)?(?:\-\d+)?)",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex NormTypePattern = new(@"(Нажатие|Н/Ф|Уд\.?\s*на\s*работу)", 
+    private static readonly Regex NormTypePattern = new(@"(Нажатие|Н/Ф|Уд\.?\s*на\s*работу)",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex LoadPattern = new(@"(\d+(?:\.\d+)?)\s*т/ось", 
+    private static readonly Regex LoadPattern = new(@"(\d+(?:\.\d+)?)\s*т/ось",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex ConsumptionPattern = new(@"(\d+(?:\.\d+)?)\s*кВт", 
+    private static readonly Regex ConsumptionPattern = new(@"(\d+(?:\.\d+)?)\s*кВт",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    
+
     public HtmlNormProcessorService(
         ILogger<HtmlNormProcessorService> logger,
         IFileEncodingDetector encodingDetector,
         ITextNormalizer textNormalizer,
         IOptions<ApplicationSettings> settings)
     {
-        _logger = logger;
-        _encodingDetector = encodingDetector;
-        _textNormalizer = textNormalizer;
-        _settings = settings.Value;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _encodingDetector = encodingDetector ?? throw new ArgumentNullException(nameof(encodingDetector));
+        _textNormalizer = textNormalizer ?? throw new ArgumentNullException(nameof(textNormalizer));
+        _settings = settings?.Value ?? throw new ArgumentNullException(nameof(settings));
     }
 
     /// <summary>
     /// Обрабатывает список HTML файлов норм
     /// Соответствует process_html_files из Python HTMLNormProcessor
+    /// ИСПРАВЛЕНО: Правильный возвращаемый тип CoreProcessingResult
     /// </summary>
-    public async Task<ProcessingResult<IEnumerable<Norm>>> ProcessHtmlFilesAsync(
+    public async Task<CoreProcessingResult> ProcessHtmlFilesAsync(
         IEnumerable<string> htmlFiles,
         CancellationToken cancellationToken = default)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        var allNorms = new List<Norm>();
-        var fileStats = new Dictionary<string, object>();
+        var allNorms = new ConcurrentBag<Norm>();
+        var fileStats = new ConcurrentDictionary<string, object>();
 
         _logger.LogInformation("Начинаем обработку {FileCount} HTML файлов норм", htmlFiles.Count());
-        
+
         var filesArray = htmlFiles.ToArray();
         _stats.TotalFiles = filesArray.Length;
+        _stats.StartTime = DateTime.UtcNow;
 
         try
         {
-            foreach (var filePath in filesArray)
+            // Параллельная обработка файлов для производительности (улучшение по сравнению с Python)
+            var tasks = filesArray.Select(async filePath =>
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                
                 try
                 {
                     var norms = await ProcessSingleNormFileAsync(filePath, cancellationToken);
-                    allNorms.AddRange(norms);
-                    
+
+                    foreach (var norm in norms)
+                    {
+                        allNorms.Add(norm);
+                    }
+
                     Interlocked.Increment(ref _stats.ProcessedFiles);
                     _logger.LogDebug("Файл {FilePath} обработан: {NormCount} норм", filePath, norms.Count);
-                    
+
                     fileStats[filePath] = new { NormCount = norms.Count, Success = true };
                 }
                 catch (Exception ex)
                 {
+                    Interlocked.Increment(ref _stats.ErrorFiles);
+                    _stats.Errors.Add($"Ошибка обработки файла {filePath}: {ex.Message}");
                     _logger.LogError(ex, "Ошибка обработки файла норм {FilePath}", filePath);
-                    Interlocked.Increment(ref _stats.SkippedFiles);
-                    fileStats[filePath] = new { Error = ex.Message, Success = false };
+
+                    fileStats[filePath] = new { NormCount = 0, Success = false, Error = ex.Message };
                 }
-            }
+            });
 
-            _stats.TotalRoutes = allNorms.Count; // В контексте норм это количество норм
-            _stats.ProcessedRoutes = allNorms.Count(n => !string.IsNullOrEmpty(n.NormId));
+            await Task.WhenAll(tasks);
+
+            stopwatch.Stop();
             _stats.ProcessingTime = stopwatch.Elapsed;
+            _stats.EndTime = DateTime.UtcNow;
 
-            // Валидация и очистка норм (аналог validation в Python)
-            var validatedNorms = await ValidateAndCleanNormsAsync(allNorms);
+            var resultNorms = allNorms.ToList();
 
-            _logger.LogInformation("Обработка норм завершена: {ProcessedFiles}/{TotalFiles} файлов, {ValidNorms} валидных норм", 
-                _stats.ProcessedFiles, _stats.TotalFiles, validatedNorms.Count);
+            // Валидация и очистка норм (аналог Python validation)
+            var validatedNorms = await ValidateAndCleanNormsAsync(resultNorms);
 
-            return new ProcessingResult<IEnumerable<Norm>>(
-                Success: true,
-                Data: validatedNorms,
-                ErrorMessage: null,
-                Statistics: _stats with { Details = fileStats }
+            _logger.LogInformation("Обработка завершена за {ElapsedMs}мс: {ValidNormCount}/{TotalNormCount} валидных норм из {FileCount} файлов",
+                stopwatch.ElapsedMilliseconds, validatedNorms.Count, resultNorms.Count, filesArray.Length);
+
+            // ИСПРАВЛЕНО: Используем CoreProcessingResult.Success из AnalysisNorm.Core.Entities
+            return AnalysisNorm.Core.Entities.ProcessingResult<IEnumerable<Norm>>.Success(
+                validatedNorms,
+                _stats
             );
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Критическая ошибка при обработке HTML файлов норм");
-            return new ProcessingResult<IEnumerable<Norm>>(
-                Success: false,
-                Data: null,
-                ErrorMessage: ex.Message,
-                Statistics: _stats
+
+            stopwatch.Stop();
+            _stats.ProcessingTime = stopwatch.Elapsed;
+            _stats.EndTime = DateTime.UtcNow;
+
+            // ИСПРАВЛЕНО: Используем CoreProcessingResult.Failure из AnalysisNorm.Core.Entities
+            return AnalysisNorm.Core.Entities.ProcessingResult<IEnumerable<Norm>>.Failure(
+                ex.Message,
+                _stats
             );
         }
     }
 
     /// <summary>
     /// Обрабатывает один HTML файл норм
-    /// Соответствует логике обработки файла в Python HTMLNormProcessor
+    /// ИСПРАВЛЕНО: Правильный возвращаемый тип CoreProcessingResult
+    /// </summary>
+    public async Task<CoreProcessingResult> ProcessHtmlFileAsync(
+        string htmlFile,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var norms = await ProcessSingleNormFileAsync(htmlFile, cancellationToken);
+            var validatedNorms = await ValidateAndCleanNormsAsync(norms);
+
+            return AnalysisNorm.Core.Entities.ProcessingResult<IEnumerable<Norm>>.Success(
+                validatedNorms,
+                _stats
+            );
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ошибка обработки файла {HtmlFile}", htmlFile);
+            return AnalysisNorm.Core.Entities.ProcessingResult<IEnumerable<Norm>>.Failure(
+                ex.Message,
+                _stats
+            );
+        }
+    }
+
+    /// <summary>
+    /// Получает статистику обработки норм
+    /// ИСПРАВЛЕНО: Правильный возвращаемый тип CoreProcessingStatistics
+    /// </summary>
+    public CoreProcessingStatistics GetProcessingStatistics()
+    {
+        return _stats;
+    }
+
+    #region Private Methods - Полная реализация обработки норм
+
+    /// <summary>
+    /// Обрабатывает один HTML файл норм
+    /// Соответствует _process_single_file из Python
     /// </summary>
     private async Task<List<Norm>> ProcessSingleNormFileAsync(string filePath, CancellationToken cancellationToken)
     {
-        _logger.LogDebug("Обрабатываем файл норм: {FilePath}", filePath);
+        _logger.LogDebug("Начинаем обработку файла норм: {FilePath}", filePath);
 
-        // Читаем файл с детекцией кодировки
+        // Читаем файл с детекцией кодировки (аналог read_text из Python)
         var htmlContent = await _encodingDetector.ReadTextWithEncodingDetectionAsync(filePath);
         if (string.IsNullOrEmpty(htmlContent))
         {
@@ -129,365 +187,350 @@ public class HtmlNormProcessorService : IHtmlNormProcessorService
             return new List<Norm>();
         }
 
-        // Очищаем HTML контент
-        var cleanedContent = CleanNormHtmlContent(htmlContent);
-        
-        // Извлекаем нормы из HTML
-        var normBlocks = ExtractNormBlocks(cleanedContent);
-        if (!normBlocks.Any())
-        {
-            _logger.LogWarning("В файле {FilePath} не найдены нормы", filePath);
-            return new List<Norm>();
-        }
+        // Парсим HTML для извлечения норм (аналог BeautifulSoup из Python)
+        var document = new HtmlDocument();
+        document.LoadHtml(htmlContent);
 
         var norms = new List<Norm>();
-        foreach (var normBlock in normBlocks)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
 
-            try
-            {
-                var parsedNorm = ParseNormBlock(normBlock);
-                if (parsedNorm != null && IsValidNorm(parsedNorm))
-                {
-                    norms.Add(parsedNorm);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка парсинга блока нормы в файле {FilePath}", filePath);
-            }
-        }
-
-        _logger.LogDebug("Файл {FilePath} обработан: {NormCount} норм", filePath, norms.Count);
-        return norms;
-    }
-
-    /// <summary>
-    /// Очищает HTML контент норм от лишних элементов
-    /// Соответствует очистке HTML в Python HTMLNormProcessor
-    /// </summary>
-    private string CleanNormHtmlContent(string htmlContent)
-    {
-        _logger.LogTrace("Очищаем HTML контент норм");
-
-        // Удаляем лишние элементы специфичные для норм
-        var patterns = new[]
-        {
-            (@"<font[^>]*>.*?</font>", RegexOptions.Singleline | RegexOptions.IgnoreCase),
-            (@"<center>.*?</center>", RegexOptions.Singleline | RegexOptions.IgnoreCase),
-            (@"<b>.*?</b>", RegexOptions.Singleline | RegexOptions.IgnoreCase),
-            (@"<i>.*?</i>", RegexOptions.Singleline | RegexOptions.IgnoreCase),
-            (@"<u>.*?</u>", RegexOptions.Singleline | RegexOptions.IgnoreCase),
-            (@"&nbsp;", RegexOptions.IgnoreCase),
-            (@"\s+", RegexOptions.None)
-        };
-
-        foreach (var (pattern, options) in patterns)
-        {
-            htmlContent = Regex.Replace(htmlContent, pattern, " ", options);
-        }
-
-        return htmlContent.Trim();
-    }
-
-    /// <summary>
-    /// Извлекает блоки норм из HTML контента
-    /// Соответствует извлечению норм в Python
-    /// </summary>
-    private List<string> ExtractNormBlocks(string htmlContent)
-    {
-        _logger.LogTrace("Извлекаем блоки норм из HTML");
-
-        var doc = new HtmlDocument();
-        doc.LoadHtml(htmlContent);
-
-        var normBlocks = new List<string>();
-
-        // Ищем таблицы с нормами
-        var tables = doc.DocumentNode.SelectNodes("//table");
+        // Извлекаем таблицы с нормами (аналог find_all('table') из Python)
+        var tables = document.DocumentNode.SelectNodes("//table");
         if (tables != null)
         {
             foreach (var table in tables)
             {
-                var tableText = _textNormalizer.NormalizeText(table.InnerText);
-                
-                // Проверяем что таблица содержит данные нормы
-                if (ContainsNormData(tableText))
-                {
-                    normBlocks.Add(table.OuterHtml);
-                }
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var tableNorms = ExtractNormsFromTable(table, filePath);
+                norms.AddRange(tableNorms);
             }
         }
 
-        // Если не найдены таблицы, ищем другие блоки с нормами
-        if (!normBlocks.Any())
+        // Также ищем нормы в div и других контейнерах
+        var divs = document.DocumentNode.SelectNodes("//div[contains(@class,'norm') or contains(@class,'table')]");
+        if (divs != null)
         {
-            var divs = doc.DocumentNode.SelectNodes("//div") ?? new List<HtmlNode>();
-            var paragraphs = doc.DocumentNode.SelectNodes("//p") ?? new List<HtmlNode>();
-            
-            var allBlocks = divs.Concat(paragraphs);
-            
-            foreach (var block in allBlocks)
+            foreach (var div in divs)
             {
-                var blockText = _textNormalizer.NormalizeText(block.InnerText);
-                if (ContainsNormData(blockText))
-                {
-                    normBlocks.Add(block.OuterHtml);
-                }
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var divNorms = ExtractNormsFromContainer(div, filePath);
+                norms.AddRange(divNorms);
             }
         }
 
-        _logger.LogTrace("Найдено блоков норм: {Count}", normBlocks.Count);
-        return normBlocks;
+        _logger.LogTrace("Извлечено {Count} норм из файла {FilePath}", norms.Count, filePath);
+        return norms;
     }
 
     /// <summary>
-    /// Проверяет содержит ли блок данные нормы
+    /// Извлекает нормы из HTML таблицы
+    /// Соответствует extract_norms_from_table из Python
     /// </summary>
-    private bool ContainsNormData(string text)
+    private List<Norm> ExtractNormsFromTable(HtmlNode table, string filePath)
     {
-        var lowerText = text.ToLower();
-        
-        // Ключевые слова для идентификации норм
-        var keywords = new[] { "норма", "расход", "кВт", "т/ось", "нажатие", "н/ф" };
-        var containsKeywords = keywords.Any(keyword => lowerText.Contains(keyword));
-        
-        // Проверяем наличие числовых данных
-        var hasNumbers = Regex.IsMatch(text, @"\d+(?:\.\d+)?");
-        
-        return containsKeywords && hasNumbers;
-    }
+        var norms = new List<Norm>();
 
-    /// <summary>
-    /// Парсит блок нормы и создает объект Norm
-    /// Соответствует парсингу нормы в Python
-    /// </summary>
-    private Norm? ParseNormBlock(string normBlockHtml)
-    {
         try
         {
-            var doc = new HtmlDocument();
-            doc.LoadHtml(normBlockHtml);
-            
-            var text = _textNormalizer.NormalizeText(doc.DocumentNode.InnerText);
-            
-            var norm = new Norm
-            {
-                CreatedAt = DateTime.UtcNow,
-                Points = new List<NormPoint>()
-            };
+            var rows = table.SelectNodes(".//tr");
+            if (rows == null || !rows.Any())
+                return norms;
 
-            // Извлекаем ID нормы
-            var normIdMatch = NormIdPattern.Match(text);
-            if (normIdMatch.Success)
-            {
-                norm.NormId = normIdMatch.Groups[1].Value;
-            }
-            else
-            {
-                _logger.LogTrace("Не удалось извлечь ID нормы из блока: {Text}", 
-                    text.Substring(0, Math.Min(100, text.Length)));
-                return null;
-            }
+            // Анализируем структуру таблицы
+            var headerRow = rows.FirstOrDefault();
+            var isNormTable = IsNormTable(headerRow);
 
-            // Извлекаем тип нормы
-            var normTypeMatch = NormTypePattern.Match(text);
-            if (normTypeMatch.Success)
-            {
-                norm.NormType = NormalizeNormType(normTypeMatch.Groups[1].Value);
-            }
-            else
-            {
-                norm.NormType = "Нажатие"; // Значение по умолчанию
-            }
+            if (!isNormTable)
+                return norms;
 
-            // Парсим точки нормы
-            ParseNormPoints(norm, doc);
+            // Пропускаем заголовок и обрабатываем строки данных
+            foreach (var row in rows.Skip(1))
+            {
+                var cells = row.SelectNodes(".//td | .//th");
+                if (cells == null || cells.Count < 2)
+                    continue;
 
-            return norm;
+                var norm = ExtractNormFromRow(cells, filePath);
+                if (norm != null)
+                {
+                    norms.Add(norm);
+                }
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Ошибка парсинга блока нормы");
+            _logger.LogWarning(ex, "Ошибка извлечения норм из таблицы в файле {FilePath}", filePath);
+        }
+
+        return norms;
+    }
+
+    /// <summary>
+    /// Извлекает нормы из любого HTML контейнера
+    /// Дополнительный метод для гибкости парсинга
+    /// </summary>
+    private List<Norm> ExtractNormsFromContainer(HtmlNode container, string filePath)
+    {
+        var norms = new List<Norm>();
+
+        try
+        {
+            // Ищем паттерны норм в тексте контейнера
+            var text = _textNormalizer.CleanText(container.InnerText);
+
+            var normMatches = NormIdPattern.Matches(text);
+            foreach (Match normMatch in normMatches)
+            {
+                var norm = ExtractNormFromText(text, normMatch, filePath);
+                if (norm != null)
+                {
+                    norms.Add(norm);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogTrace(ex, "Ошибка извлечения норм из контейнера в файле {FilePath}", filePath);
+        }
+
+        return norms;
+    }
+
+    /// <summary>
+    /// Проверяет является ли таблица таблицей норм
+    /// Аналог is_norm_table из Python
+    /// </summary>
+    private bool IsNormTable(HtmlNode? headerRow)
+    {
+        if (headerRow == null) return false;
+
+        var headerText = _textNormalizer.CleanText(headerRow.InnerText).ToLowerInvariant();
+
+        // Ключевые слова которые указывают на таблицу норм
+        var normKeywords = new[] { "норма", "нагрузка", "расход", "т/ось", "квт", "consumption" };
+
+        return normKeywords.Any(keyword => headerText.Contains(keyword));
+    }
+
+    /// <summary>
+    /// Извлекает норму из строки таблицы
+    /// Соответствует extract_norm_from_row из Python
+    /// </summary>
+    private Norm? ExtractNormFromRow(HtmlNodeCollection cells, string filePath)
+    {
+        try
+        {
+            // Извлекаем текст из ячеек
+            var cellTexts = cells.Select(cell => _textNormalizer.CleanText(cell.InnerText)).ToList();
+
+            // Ищем ID нормы в первой ячейке или в объединенном тексте
+            var allText = string.Join(" ", cellTexts);
+            var normIdMatch = NormIdPattern.Match(allText);
+            if (!normIdMatch.Success)
+                return null;
+
+            var normId = normIdMatch.Groups[1].Value;
+
+            // Определяем тип нормы (аналог determine_norm_type из Python)
+            var normType = DetermineNormType(allText);
+
+            var norm = new Norm
+            {
+                NormId = normId,
+                NormType = normType,
+                Points = new List<NormPoint>(),
+                CreatedAt = DateTime.UtcNow,
+                Description = ExtractDescription(allText)
+            };
+
+            // Извлекаем точки нагрузка-расход (аналог extract_load_consumption_pairs из Python)
+            ExtractNormPoints(cellTexts, norm);
+
+            // Валидируем норму перед возвратом
+            return IsValidNorm(norm) ? norm : null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogTrace(ex, "Ошибка извлечения нормы из строки таблицы в файле {FilePath}", filePath);
             return null;
         }
     }
 
     /// <summary>
-    /// Нормализует тип нормы
+    /// Извлекает норму из произвольного текста
+    /// Дополнительный метод для парсинга свободного текста
     /// </summary>
-    private string NormalizeNormType(string normType)
+    private Norm? ExtractNormFromText(string text, Match normIdMatch, string filePath)
     {
-        return normType.ToLower() switch
+        try
         {
-            var t when t.Contains("нажатие") => "Нажатие",
-            var t when t.Contains("н/ф") => "Н/Ф", 
-            var t when t.Contains("уд") && t.Contains("работ") => "Уд. на работу",
-            _ => "Нажатие"
-        };
+            var normId = normIdMatch.Groups[1].Value;
+            var normType = DetermineNormType(text);
+
+            var norm = new Norm
+            {
+                NormId = normId,
+                NormType = normType,
+                Points = new List<NormPoint>(),
+                CreatedAt = DateTime.UtcNow,
+                Description = ExtractDescription(text)
+            };
+
+            // Ищем числовые пары в тексте
+            ExtractNormPointsFromText(text, norm);
+
+            return IsValidNorm(norm) ? norm : null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogTrace(ex, "Ошибка извлечения нормы из текста в файле {FilePath}", filePath);
+            return null;
+        }
     }
 
     /// <summary>
-    /// Парсит точки нормы из HTML документа
-    /// Соответствует извлечению точек в Python
+    /// Определяет тип нормы на основе текста
+    /// Соответствует determine_norm_type из Python
     /// </summary>
-    private void ParseNormPoints(Norm norm, HtmlDocument doc)
+    private string DetermineNormType(string text)
     {
-        var points = new List<NormPoint>();
-        
-        // Ищем таблицы с данными точек
-        var tables = doc.DocumentNode.SelectNodes("//table");
-        if (tables != null)
+        var typeMatch = NormTypePattern.Match(text);
+        if (typeMatch.Success)
         {
-            foreach (var table in tables)
+            return typeMatch.Groups[1].Value;
+        }
+
+        // Дополнительная логика определения типа по контексту
+        var lowerText = text.ToLowerInvariant();
+
+        if (lowerText.Contains("нажати") || lowerText.Contains("ось"))
+            return "Нажатие";
+
+        if (lowerText.Contains("н/ф") || lowerText.Contains("нефтян"))
+            return "Н/Ф";
+
+        if (lowerText.Contains("работ") || lowerText.Contains("удельн"))
+            return "Уд. на работу";
+
+        return "Нажатие"; // По умолчанию
+    }
+
+    /// <summary>
+    /// Извлекает описание нормы
+    /// </summary>
+    private string? ExtractDescription(string text)
+    {
+        // Извлекаем первое предложение как описание
+        var sentences = text.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        var firstSentence = sentences.FirstOrDefault()?.Trim();
+
+        return !string.IsNullOrEmpty(firstSentence) && firstSentence.Length > 10
+            ? firstSentence
+            : null;
+    }
+
+    /// <summary>
+    /// Извлекает точки нормы из ячеек таблицы
+    /// Соответствует extract_load_consumption_pairs из Python
+    /// </summary>
+    private void ExtractNormPoints(List<string> cellTexts, Norm norm)
+    {
+        // Метод 1: Парные ячейки (нагрузка, расход)
+        for (int i = 0; i < cellTexts.Count - 1; i++)
+        {
+            var loadMatch = LoadPattern.Match(cellTexts[i]);
+            var consumptionMatch = ConsumptionPattern.Match(cellTexts[i + 1]);
+
+            if (loadMatch.Success && consumptionMatch.Success)
             {
-                var tablePoints = ExtractPointsFromTable(table, norm.NormId!);
-                points.AddRange(tablePoints);
+                if (decimal.TryParse(loadMatch.Groups[1].Value, out var load) &&
+                    decimal.TryParse(consumptionMatch.Groups[1].Value, out var consumption))
+                {
+                    norm.Points.Add(new NormPoint
+                    {
+                        Load = load,
+                        Consumption = consumption
+                    });
+                }
             }
         }
 
-        // Если не найдены точки в таблицах, пытаемся извлечь из текста
-        if (!points.Any())
+        // Метод 2: Поиск в каждой ячейке пар значений
+        foreach (var cellText in cellTexts)
         {
-            var textPoints = ExtractPointsFromText(doc.DocumentNode.InnerText, norm.NormId!);
-            points.AddRange(textPoints);
+            ExtractNormPointsFromText(cellText, norm);
         }
-
-        // Сортируем точки по нагрузке и присваиваем порядок
-        points = points
-            .Where(p => p.Load > 0 && p.Consumption > 0)
-            .OrderBy(p => p.Load)
-            .Select((p, index) => 
-            {
-                p.Order = index + 1;
-                return p;
-            })
-            .ToList();
-
-        norm.Points = points;
     }
 
     /// <summary>
-    /// Извлекает точки нормы из таблицы
+    /// Извлекает точки нормы из произвольного текста
+    /// Использует регулярные выражения для поиска числовых пар
     /// </summary>
-    private List<NormPoint> ExtractPointsFromTable(HtmlNode table, string normId)
+    private void ExtractNormPointsFromText(string text, Norm norm)
     {
-        var points = new List<NormPoint>();
-        
-        var rows = table.SelectNodes(".//tr");
-        if (rows == null) return points;
+        // Паттерн для поиска пар "нагрузка т/ось - расход кВт"
+        var pairPattern = new Regex(@"(\d+(?:\.\d+)?)\s*т/ось[^\d]*(\d+(?:\.\d+)?)\s*кВт", RegexOptions.IgnoreCase);
+        var matches = pairPattern.Matches(text);
 
-        foreach (var row in rows)
+        foreach (Match match in matches)
         {
-            var cells = row.SelectNodes(".//td | .//th");
-            if (cells == null || cells.Count < 2) continue;
-
-            try
+            if (decimal.TryParse(match.Groups[1].Value, out var load) &&
+                decimal.TryParse(match.Groups[2].Value, out var consumption))
             {
-                var cellTexts = cells.Select(cell => _textNormalizer.NormalizeText(cell.InnerText)).ToList();
-                
-                // Ищем пары нагрузка-расход
-                for (int i = 0; i < cellTexts.Count - 1; i++)
+                // Проверяем что такая точка еще не добавлена
+                if (!norm.Points.Any(p => p.Load == load && p.Consumption == consumption))
                 {
-                    var loadMatch = LoadPattern.Match(cellTexts[i]);
-                    var consumptionMatch = ConsumptionPattern.Match(cellTexts[i + 1]);
-                    
-                    if (loadMatch.Success && consumptionMatch.Success)
+                    norm.Points.Add(new NormPoint
                     {
-                        var load = _textNormalizer.SafeDecimal(loadMatch.Groups[1].Value);
-                        var consumption = _textNormalizer.SafeDecimal(consumptionMatch.Groups[1].Value);
-                        
-                        if (load > 0 && consumption > 0)
+                        Load = load,
+                        Consumption = consumption
+                    });
+                }
+            }
+        }
+
+        // Дополнительные паттерны для разных форматов записи
+        var alternatePatterns = new[]
+        {
+            new Regex(@"(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)", RegexOptions.IgnoreCase),
+            new Regex(@"(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)", RegexOptions.IgnoreCase)
+        };
+
+        foreach (var pattern in alternatePatterns)
+        {
+            var altMatches = pattern.Matches(text);
+            foreach (Match match in altMatches)
+            {
+                if (decimal.TryParse(match.Groups[1].Value, out var load) &&
+                    decimal.TryParse(match.Groups[2].Value, out var consumption) &&
+                    load <= 30 && consumption <= 1000) // Разумные границы
+                {
+                    if (!norm.Points.Any(p => p.Load == load && p.Consumption == consumption))
+                    {
+                        norm.Points.Add(new NormPoint
                         {
-                            points.Add(new NormPoint
-                            {
-                                NormId = normId,
-                                Load = load,
-                                Consumption = consumption,
-                                PointType = "base"
-                            });
-                        }
+                            Load = load,
+                            Consumption = consumption
+                        });
                     }
                 }
             }
-            catch (Exception ex)
-            {
-                _logger.LogTrace(ex, "Ошибка извлечения точки из строки таблицы");
-            }
         }
-
-        return points;
-    }
-
-    /// <summary>
-    /// Извлекает точки нормы из текста
-    /// </summary>
-    private List<NormPoint> ExtractPointsFromText(string text, string normId)
-    {
-        var points = new List<NormPoint>();
-        
-        // Ищем все числа, которые могут быть нагрузками и расходами
-        var loadMatches = LoadPattern.Matches(text);
-        var consumptionMatches = ConsumptionPattern.Matches(text);
-        
-        // Пытаемся сопоставить нагрузки с расходами
-        var loads = loadMatches.Cast<Match>()
-            .Select(m => new { Position = m.Index, Value = _textNormalizer.SafeDecimal(m.Groups[1].Value) })
-            .Where(item => item.Value > 0)
-            .ToList();
-            
-        var consumptions = consumptionMatches.Cast<Match>()
-            .Select(m => new { Position = m.Index, Value = _textNormalizer.SafeDecimal(m.Groups[1].Value) })
-            .Where(item => item.Value > 0)
-            .ToList();
-
-        // Сопоставляем ближайшие нагрузки и расходы
-        foreach (var load in loads)
-        {
-            var closestConsumption = consumptions
-                .Where(c => c.Position > load.Position)
-                .OrderBy(c => c.Position - load.Position)
-                .FirstOrDefault();
-                
-            if (closestConsumption != null)
-            {
-                points.Add(new NormPoint
-                {
-                    NormId = normId,
-                    Load = load.Value,
-                    Consumption = closestConsumption.Value,
-                    PointType = "base"
-                });
-                
-                // Удаляем использованный расход
-                consumptions.Remove(closestConsumption);
-            }
-        }
-
-        return points;
     }
 
     /// <summary>
     /// Проверяет валидность нормы
-    /// Соответствует валидации в Python
+    /// Соответствует validate_norm из Python
     /// </summary>
     private bool IsValidNorm(Norm norm)
     {
-        // Проверяем обязательные поля
-        if (string.IsNullOrEmpty(norm.NormId))
+        if (norm == null || string.IsNullOrEmpty(norm.NormId))
         {
-            _logger.LogTrace("Норма отклонена: отсутствует ID");
             return false;
         }
 
-        if (!norm.Points.Any())
-        {
-            _logger.LogTrace("Норма {NormId} отклонена: нет точек", norm.NormId);
-            return false;
-        }
-
-        // Проверяем что есть минимум 2 точки для интерполяции
+        // Минимальное количество точек для валидной нормы
         if (norm.Points.Count < 2)
         {
             _logger.LogTrace("Норма {NormId} отклонена: недостаточно точек ({Count})", norm.NormId, norm.Points.Count);
@@ -495,23 +538,21 @@ public class HtmlNormProcessorService : IHtmlNormProcessorService
         }
 
         // Проверяем валидность точек
-        var validPoints = norm.Points.Where(p => 
-            p.Load >= AnalysisConstants.MinValidLoad && 
-            p.Load <= AnalysisConstants.MaxValidLoad &&
-            p.Consumption >= AnalysisConstants.MinValidConsumption && 
-            p.Consumption <= AnalysisConstants.MaxValidConsumption
+        var validPoints = norm.Points.Where(p =>
+            p.Load >= 1 && p.Load <= 30 &&           // Разумные границы нагрузки
+            p.Consumption >= 10 && p.Consumption <= 1000  // Разумные границы расхода
         ).ToList();
 
         if (validPoints.Count < 2)
         {
-            _logger.LogTrace("Норма {NormId} отклонена: недостаточно валидных точек ({ValidCount}/{TotalCount})", 
+            _logger.LogTrace("Норма {NormId} отклонена: недостаточно валидных точек ({ValidCount}/{TotalCount})",
                 norm.NormId, validPoints.Count, norm.Points.Count);
             return false;
         }
 
         // Обновляем норму только валидными точками
         norm.Points = validPoints;
-        
+
         return true;
     }
 
@@ -532,19 +573,15 @@ public class HtmlNormProcessorService : IHtmlNormProcessorService
         foreach (var group in normGroups)
         {
             var groupNorms = group.ToList();
-            
+
             if (groupNorms.Count > 1)
             {
                 duplicateNormIds.Add(group.Key!);
-                _logger.LogWarning("Найдены дублированные нормы с ID {NormId}: {Count} экземпляров", 
-                    group.Key, groupNorms.Count);
-                
+                _logger.LogDebug("Найдено {Count} дубликатов нормы {NormId}, оставляем лучшую",
+                    groupNorms.Count, group.Key);
+
                 // Выбираем норму с наибольшим количеством точек
-                var bestNorm = groupNorms
-                    .OrderByDescending(n => n.Points.Count)
-                    .ThenByDescending(n => n.CreatedAt)
-                    .First();
-                    
+                var bestNorm = groupNorms.OrderByDescending(n => n.Points.Count).First();
                 validNorms.Add(bestNorm);
             }
             else
@@ -553,55 +590,27 @@ public class HtmlNormProcessorService : IHtmlNormProcessorService
             }
         }
 
-        // Финальная валидация
-        var finalNorms = validNorms.Where(IsValidNorm).ToList();
+        // Дополнительная валидация и сортировка
+        validNorms = validNorms
+            .Where(IsValidNorm)
+            .OrderBy(n => n.NormId)
+            .ToList();
 
-        _logger.LogInformation("Валидация норм завершена: {ValidCount}/{TotalCount} норм прошли валидацию, {DuplicateCount} дубликатов удалено", 
-            finalNorms.Count, norms.Count, duplicateNormIds.Count);
+        // Обновляем статистику
+        _stats.ProcessedRoutes = validNorms.Count; // Используем как количество обработанных норм
+        _stats.TotalRoutes = norms.Count; // Используем как общее количество найденных норм
+        _stats.DuplicateRoutes = norms.Count - validNorms.Count;
 
-        return finalNorms;
+        if (duplicateNormIds.Any())
+        {
+            _stats.Warnings.Add($"Найдено дубликатов норм: {string.Join(", ", duplicateNormIds)}");
+        }
+
+        _logger.LogInformation("Валидация завершена: {ValidCount}/{TotalCount} норм прошли валидацию",
+            validNorms.Count, norms.Count);
+
+        return validNorms;
     }
 
-    public ProcessingStatistics GetProcessingStatistics()
-    {
-        return _stats;
-    }
-}
-
-/// <summary>
-/// Расширения для работы с нормами
-/// </summary>
-public static class NormExtensions
-{
-    /// <summary>
-    /// Проверяет может ли норма использоваться для интерполяции
-    /// </summary>
-    public static bool CanInterpolate(this Norm norm)
-    {
-        return norm.Points.Count >= 2 && 
-               norm.Points.Any(p => p.Load > 0 && p.Consumption > 0);
-    }
-    
-    /// <summary>
-    /// Получает диапазон нагрузок нормы
-    /// </summary>
-    public static (decimal Min, decimal Max) GetLoadRange(this Norm norm)
-    {
-        if (!norm.Points.Any())
-            return (0, 0);
-            
-        var loads = norm.Points.Select(p => p.Load).ToList();
-        return (loads.Min(), loads.Max());
-    }
-    
-    /// <summary>
-    /// Получает среднее значение расхода
-    /// </summary>
-    public static decimal GetAverageConsumption(this Norm norm)
-    {
-        if (!norm.Points.Any())
-            return 0;
-            
-        return norm.Points.Average(p => p.Consumption);
-    }
+    #endregion
 }

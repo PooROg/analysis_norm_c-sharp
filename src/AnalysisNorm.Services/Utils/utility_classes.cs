@@ -525,6 +525,12 @@ public class ApplicationSettings
     // Logging settings
     public bool EnableVerboseLogging { get; set; } = false;
     public bool LogProcessingStatistics { get; set; } = true;
+
+    // Время истечения кэша в часах (недостающее свойство)
+    public int CacheExpirationHours { get; set; } = 24;
+
+    // Время истечения кэша в днях (недостающее свойство)
+    public int CacheExpirationDays { get; set; } = 7;
 }
 
 #endregion

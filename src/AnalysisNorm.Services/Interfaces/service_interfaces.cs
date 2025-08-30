@@ -1,5 +1,8 @@
 using System.Drawing;
 using AnalysisNorm.Core.Entities;
+using CoreAnalysisResult = AnalysisNorm.Core.Entities.AnalysisResult;
+using CoreProcessingResult = AnalysisNorm.Core.Entities.ProcessingResult<T>;
+using CoreProcessingStatistics = AnalysisNorm.Core.Entities.ProcessingStatistics;
 
 namespace AnalysisNorm.Services.Interfaces;
 
@@ -173,12 +176,8 @@ public interface IAnalysisCacheService
     /// <summary>
     /// Получает результат анализа из кэша по хэшу
     /// </summary>
-    Task<AnalysisResult?> GetCachedAnalysisAsync(string analysisHash);
-
-    /// <summary>
-    /// Сохраняет результат анализа в кэш
-    /// </summary>
-    Task SaveAnalysisAsync(AnalysisResult analysisResult, CancellationToken cancellationToken = default);
+    Task<CoreAnalysisResult?> GetCachedAnalysisAsync(string analysisHash);
+    Task SaveAnalysisAsync(CoreAnalysisResult analysisResult, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Очищает устаревший кэш
@@ -416,40 +415,6 @@ public class StorageInfo
 }
 
 /// <summary>
-/// Результат анализа
-/// </summary>
-public class AnalysisResult
-{
-    public string SectionName { get; set; } = string.Empty;
-    public string? NormId { get; set; }
-    public bool SingleSectionOnly { get; set; }
-    public bool UseCoefficients { get; set; }
-    public List<Route> Routes { get; set; } = new();
-    public DateTime CreatedAt { get; set; }
-    public string? AnalysisHash { get; set; }
-
-    // Дополнительные статистические свойства
-    public int TotalRoutes { get; set; }
-    public int ProcessedRoutes { get; set; }
-    public int AnalyzedRoutes { get; set; }
-    public int Economy { get; set; }
-    public int Normal { get; set; }
-    public int Overrun { get; set; }
-    public decimal AverageDeviation { get; set; }
-
-    /// <summary>
-    /// Генерирует хэш для кэширования
-    /// </summary>
-    public void GenerateAnalysisHash()
-    {
-        var hashInput = $"{SectionName}_{NormId ?? "all"}_{SingleSectionOnly}_{UseCoefficients}";
-        using var sha256 = System.Security.Cryptography.SHA256.Create();
-        var hashBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(hashInput));
-        AnalysisHash = Convert.ToHexString(hashBytes)[..16]; // Первые 16 символов
-    }
-}
-
-/// <summary>
 /// Норма с количеством маршрутов
 /// </summary>
 public record NormWithCount(string NormId, int RouteCount);
@@ -467,6 +432,22 @@ public class CacheStatistics
     public int ExpiredEntries { get; set; }
     public long CacheSizeBytes { get; set; }
     public double HitRate => TotalEntries > 0 ? (double)HitCount / TotalEntries : 0;
+
+    /// Общее количество запросов (недостающее свойство)
+    public int TotalRequests { get; set; }
+
+    /// Количество попаданий в кэш (недостающее свойство)  
+    public int CacheHits { get; set; }
+
+    /// Количество промахов (недостающее свойство)
+    public int CacheMisses { get; set; }
+
+    /// Количество сохраненных записей (недостающее свойство)
+    public int SavedEntries { get; set; }
+
+    /// Количество ошибок (недостающее свойство)
+    public int Errors { get; set; }
+
 }
 
 /// <summary>
@@ -478,57 +459,6 @@ public class CoefficientStatistics
     public int UniqueSeries { get; set; }
     public decimal AverageCoefficient { get; set; }
     public DateTime LastUpdate { get; set; }
-}
-
-/// <summary>
-/// Результат обработки (обобщенный класс)
-/// </summary>
-public class ProcessingResult<T>
-{
-    /// <summary>
-    /// Успешность операции
-    /// </summary>
-    public bool IsSuccess { get; set; }
-
-    /// <summary>
-    /// Данные результата
-    /// </summary>
-    public T? Data { get; set; }
-
-    /// <summary>
-    /// Сообщение об ошибке
-    /// </summary>
-    public string? ErrorMessage { get; set; }
-
-    /// <summary>
-    /// Статистика обработки
-    /// </summary>
-    public ProcessingStatistics? Statistics { get; set; }
-
-    /// <summary>
-    /// Создает успешный результат
-    /// </summary>
-    public static ProcessingResult<T> Success(T data, ProcessingStatistics? statistics = null)
-    {
-        return new ProcessingResult<T>
-        {
-            IsSuccess = true,
-            Data = data,
-            Statistics = statistics
-        };
-    }
-
-    /// <summary>
-    /// Создает результат с ошибкой
-    /// </summary>
-    public static ProcessingResult<T> Failure(string errorMessage)
-    {
-        return new ProcessingResult<T>
-        {
-            IsSuccess = false,
-            ErrorMessage = errorMessage
-        };
-    }
 }
 
 /// <summary>
@@ -545,6 +475,26 @@ public class ProcessingStatistics
     public DateTime? EndTime { get; set; }
 
     public double SuccessRate => TotalFiles > 0 ? (double)ProcessedFiles / TotalFiles * 100 : 0;
+
+        /// <summary>
+    /// Время начала (недостающее свойство)
+    /// </summary>
+    public DateTime StartTime { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Количество обработанных файлов (недостающее свойство)
+    /// </summary>
+    public int ProcessedFiles { get; set; }
+
+    /// <summary>
+    /// Количество файлов с ошибками (недостающее свойство)
+    /// </summary>
+    public int ErrorFiles { get; set; }
+
+    /// <summary>
+    /// Время окончания (недостающее свойство)
+    /// </summary>
+    public DateTime? EndTime { get; set; }
 }
 
 /// <summary>

@@ -188,6 +188,36 @@ public class Route
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 
+        /// <summary>
+    /// Табельный номер машиниста (недостающее свойство)
+    /// </summary>
+    public string? DriverTabNumber { get; set; }
+
+    /// <summary>
+    /// Названия участков (недостающее свойство)
+    /// </summary>
+    public List<string> SectionNames { get; set; } = new();
+
+    /// <summary>
+    /// Длина поезда (недостающее свойство)
+    /// </summary>
+    public decimal? TrainLength { get; set; }
+
+    /// <summary>
+    /// Время в пути (недостающее свойство)
+    /// </summary>
+    public TimeSpan? TripTime { get; set; }
+
+    /// <summary>
+    /// Расстояние (недостающее свойство)
+    /// </summary>
+    public decimal? Distance { get; set; }
+
+    /// <summary>
+    /// Нормативный удельный расход (недостающее свойство)
+    /// </summary>
+    public decimal? NormUd { get; set; }
+
     /// <summary>
     /// Хэш для идентификации дубликатов (номер_маршрута + дата_поездки + табельный)
     /// Эквивалент extract_route_key из Python utils.py
