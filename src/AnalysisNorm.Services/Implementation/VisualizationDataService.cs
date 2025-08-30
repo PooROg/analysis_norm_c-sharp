@@ -726,18 +726,4 @@ public class InterpolationFunction
     public decimal[] YValues { get; set; } = Array.Empty<decimal>();
 }
 
-/// <summary>
-/// Статусы отклонений - константы для цветового кодирования
-/// </summary>
-public static class DeviationStatus
-{
-    public const string EconomyStrong = "Сильная экономия";
-    public const string EconomyMedium = "Средняя экономия";
-    public const string EconomyWeak = "Слабая экономия";
-    public const string Normal = "В норме";
-    public const string OverrunWeak = "Слабый перерасход";
-    public const string OverrunMedium = "Средний перерасход";
-    public const string OverrunStrong = "Сильный перерасход";
-}
-
 #endregion

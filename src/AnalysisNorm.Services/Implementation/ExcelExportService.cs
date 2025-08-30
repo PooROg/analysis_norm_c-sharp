@@ -488,17 +488,3 @@ public enum ExcelFormat
     Modern,
     Professional
 }
-
-/// <summary>
-/// Статусы отклонений - константы для подсветки
-/// </summary>
-public static class DeviationStatus
-{
-    public const string EconomyStrong = "Экономия сильная";
-    public const string EconomyMedium = "Экономия средняя";
-    public const string EconomyWeak = "Экономия слабая";
-    public const string Normal = "В норме";
-    public const string OverrunWeak = "Перерасход слабый";
-    public const string OverrunMedium = "Перерасход средний";
-    public const string OverrunStrong = "Перерасход сильный";
-}

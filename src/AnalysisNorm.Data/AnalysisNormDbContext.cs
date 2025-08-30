@@ -1,3 +1,4 @@
+// === AnalysisNorm.Data/AnalysisNormDbContext.cs ===
 using Microsoft.EntityFrameworkCore;
 using AnalysisNorm.Core.Entities;
 
@@ -63,10 +64,6 @@ public class AnalysisNormDbContext : DbContext
             // Индекс для быстрой сортировки точек (для интерполяции)
             entity.HasIndex(e => new { e.NormId, e.Order }).HasDatabaseName("IX_NormPoints_NormId_Order");
             entity.HasIndex(e => new { e.NormId, e.Load }).HasDatabaseName("IX_NormPoints_NormId_Load");
-            
-            // Проверка корректности значений (как в Python validation)
-            entity.HasCheckConstraint("CK_NormPoints_Load_Positive", "Load > 0");
-            entity.HasCheckConstraint("CK_NormPoints_Consumption_Positive", "Consumption > 0");
         });
 
         // === КОНФИГУРАЦИЯ LOCOMOTIVE_COEFFICIENT ===
@@ -78,10 +75,6 @@ public class AnalysisNormDbContext : DbContext
                 .HasDatabaseName("IX_LocomotiveCoefficients_Series_Number");
             
             entity.HasIndex(e => e.SeriesNormalized).HasDatabaseName("IX_LocomotiveCoefficients_SeriesNormalized");
-            
-            // Автоматическое обновление рассчитанных полей
-            entity.Property(e => e.SeriesNormalized).HasComputedColumnSql(null);
-            entity.Property(e => e.DeviationPercent).HasComputedColumnSql(null);
         });
 
         // === КОНФИГУРАЦИЯ ANALYSIS_RESULT ===

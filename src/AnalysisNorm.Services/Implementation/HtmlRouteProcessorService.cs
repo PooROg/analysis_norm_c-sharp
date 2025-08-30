@@ -628,36 +628,3 @@ public record RouteMetadata
     public string? DriverTab { get; set; }
     public string? Identifier { get; set; }
 }
-
-/// <summary>
-/// Статусы отклонений расхода от нормы
-/// Соответствует StatusClassifier из Python utils.py
-/// </summary>
-public static class DeviationStatus
-{
-    public const string EconomyStrong = "Экономия сильная";
-    public const string EconomyMedium = "Экономия средняя";  
-    public const string EconomyWeak = "Экономия слабая";
-    public const string Normal = "Норма";
-    public const string OverrunWeak = "Перерасход слабый";
-    public const string OverrunMedium = "Перерасход средний";
-    public const string OverrunStrong = "Перерасход сильный";
-
-    /// <summary>
-    /// Определяет статус отклонения по проценту
-    /// Точное соответствие get_status из Python StatusClassifier
-    /// </summary>
-    public static string GetStatus(decimal deviationPercent)
-    {
-        return deviationPercent switch
-        {
-            <= AnalysisConstants.StrongEconomyThreshold => EconomyStrong,      // <= -30%
-            <= AnalysisConstants.MediumEconomyThreshold => EconomyMedium,      // <= -20%
-            <= AnalysisConstants.WeakEconomyThreshold => EconomyWeak,          // <= -5%
-            <= AnalysisConstants.NormalUpperThreshold => Normal,               // <= 5%
-            <= AnalysisConstants.WeakOverrunThreshold => OverrunWeak,          // <= 20%
-            <= AnalysisConstants.MediumOverrunThreshold => OverrunMedium,      // <= 30%
-            _ => OverrunStrong                                                 // > 30%
-        };
-    }
-}
