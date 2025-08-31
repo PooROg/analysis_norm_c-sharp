@@ -1,25 +1,25 @@
-// === AnalysisNorm.Core/Entities/ProcessingStatistics.cs ===
-using System.Diagnostics;
 using System.Text.Json.Serialization;
 
 namespace AnalysisNorm.Core.Entities;
 
 /// <summary>
-/// Статистика обработки данных
-/// Соответствует Python statistics tracking из analysis/norm_processor.py
-/// Высокопроизводительная структура с минимальным memory footprint
+/// ВОССТАНОВЛЕНО: Полная объединенная версия ProcessingStatistics
+/// Включает все свойства из Core и Services слоев без дублирования
 /// </summary>
-public sealed class ProcessingStatistics
+public class ProcessingStatistics
 {
-    #region Core Counters - Thread-Safe Fields
+    #region Thread-Safe Fields
 
-    // ИСПРАВЛЕНО: Используем поля для thread-safe операций с Interlocked
-    private int _totalProcessed;
-    private int _successfullyProcessed;
-    private int _errorCount;
-    private int _skippedCount;
-    private int _warningCount;
-    private long _bytesProcessed;
+    private volatile int _totalProcessed;
+    private volatile int _successfullyProcessed;
+    private volatile int _errorCount;
+    private volatile int _skippedCount;
+    private volatile int _warningCount;
+    private volatile long _bytesProcessed;
+
+    #endregion
+
+    #region Core Processing Properties
 
     /// <summary>
     /// Общее количество обработанных элементов
@@ -40,7 +40,7 @@ public sealed class ProcessingStatistics
     }
 
     /// <summary>
-    /// Количество элементов с ошибками
+    /// Количество ошибок
     /// </summary>
     public int ErrorCount
     {
@@ -57,17 +57,26 @@ public sealed class ProcessingStatistics
         set => _skippedCount = value;
     }
 
+    /// <summary>
+    /// Количество предупреждений
+    /// </summary>
+    public int WarningCount
+    {
+        get => _warningCount;
+        set => _warningCount = value;
+    }
+
     #endregion
 
-    #region Performance Metrics
+    #region Timing Properties
 
     /// <summary>
-    /// Время начала обработки (UTC)
+    /// Время начала обработки
     /// </summary>
     public DateTime StartTime { get; set; } = DateTime.UtcNow;
 
     /// <summary>
-    /// Время завершения обработки (UTC)
+    /// Время окончания обработки
     /// </summary>
     public DateTime? EndTime { get; set; }
 
@@ -76,6 +85,21 @@ public sealed class ProcessingStatistics
     /// </summary>
     [JsonIgnore]
     public TimeSpan Duration => EndTime?.Subtract(StartTime) ?? TimeSpan.Zero;
+
+    /// <summary>
+    /// Время обработки - для совместимости с Services слоем
+    /// </summary>
+    [JsonIgnore]
+    public TimeSpan ProcessingTime => Duration;
+
+    /// <summary>
+    /// ВОССТАНОВЛЕНО: Время обработки в миллисекундах (из Services слоя)
+    /// </summary>
+    public long ProcessingTimeMs
+    {
+        get => (long)Duration.TotalMilliseconds;
+        set { /* Только для чтения, вычисляется из Duration */ }
+    }
 
     /// <summary>
     /// Скорость обработки (элементов в секунду)
@@ -92,27 +116,27 @@ public sealed class ProcessingStatistics
 
     #endregion
 
-    #region File Processing Specifics
+    #region File Processing Properties
 
     /// <summary>
-    /// Количество обработанных файлов
+    /// ВОССТАНОВЛЕНО: Общее количество файлов для обработки (из Services слоя)
     /// </summary>
-    public int FilesProcessed { get; set; }
+    public int TotalFiles { get; set; }
 
     /// <summary>
-    /// Количество файлов с ошибками
-    /// </summary>
-    public int ErrorFiles { get; set; }
-
-    /// <summary>
-    /// Количество успешно обработанных файлов
+    /// ВОССТАНОВЛЕНО: Количество успешно обработанных файлов (из Services слоя)
     /// </summary>
     public int ProcessedFiles { get; set; }
 
     /// <summary>
-    /// Общее количество файлов для обработки
+    /// ВОССТАНОВЛЕНО: Количество файлов с ошибками (из Services слоя)
     /// </summary>
-    public int TotalFiles { get; set; }
+    public int ErrorFiles { get; set; }
+
+    /// <summary>
+    /// ВОССТАНОВЛЕНО: Количество пропущенных файлов (из Services слоя)
+    /// </summary>
+    public int SkippedFiles { get; set; }
 
     /// <summary>
     /// Размер обработанных данных в байтах
@@ -123,8 +147,34 @@ public sealed class ProcessingStatistics
         set => _bytesProcessed = value;
     }
 
+    #endregion
+
+    #region Route Processing Properties - ВОССТАНОВЛЕНО из Services слоя
+
     /// <summary>
-    /// Количество найденных норм/маршрутов
+    /// ВОССТАНОВЛЕНО: Общее количество маршрутов (из Services слоя)
+    /// КРИТИЧЕСКИ ВАЖНО: это свойство использовалось в ошибках компиляции
+    /// </summary>
+    public int TotalRoutes { get; set; }
+
+    /// <summary>
+    /// ВОССТАНОВЛЕНО: Количество обработанных маршрутов (из Services слоя)
+    /// КРИТИЧЕСКИ ВАЖНО: это свойство использовалось в ошибках компиляции
+    /// </summary>
+    public int ProcessedRoutes { get; set; }
+
+    /// <summary>
+    /// ВОССТАНОВЛЕНО: Количество дублированных маршрутов (из Services слоя)
+    /// КРИТИЧЕСКИ ВАЖНО: это свойство использовалось в ошибках компиляции
+    /// </summary>
+    public int DuplicateRoutes { get; set; }
+
+    #endregion
+
+    #region Data Quality Metrics
+
+    /// <summary>
+    /// Количество найденных элементов (норм/маршрутов)
     /// </summary>
     public int ItemsFound { get; set; }
 
@@ -134,50 +184,7 @@ public sealed class ProcessingStatistics
     public int ItemsNormalized { get; set; }
 
     /// <summary>
-    /// Общее количество маршрутов
-    /// </summary>
-    public int TotalRoutes { get; set; }
-
-    /// <summary>
-    /// Количество обработанных маршрутов
-    /// </summary>
-    public int ProcessedRoutes { get; set; }
-
-    /// <summary>
-    /// Количество дублированных маршрутов
-    /// </summary>
-    public int DuplicateRoutes { get; set; }
-
-    /// <summary>
-    /// Время обработки
-    /// </summary>
-    public TimeSpan ProcessingTime { get; set; }
-
-    /// <summary>
-    /// Список ошибок обработки
-    /// </summary>
-    public List<string> Errors { get; set; } = new();
-
-    /// <summary>
-    /// Список предупреждений
-    /// </summary>
-    public List<string> Warnings { get; set; } = new();
-
-    #endregion
-
-    #region Data Quality Metrics - Thread-Safe Fields
-
-    /// <summary>
-    /// Количество записей с предупреждениями
-    /// </summary>
-    public int WarningCount
-    {
-        get => _warningCount;
-        set => _warningCount = value;
-    }
-
-    /// <summary>
-    /// Количество дублированных записей
+    /// Количество дублированных записей (общий счетчик)
     /// </summary>
     public int DuplicateCount { get; set; }
 
@@ -193,21 +200,39 @@ public sealed class ProcessingStatistics
 
     #endregion
 
-    #region Convenience Properties
+    #region Error and Warning Collections
+
+    /// <summary>
+    /// ВОССТАНОВЛЕНО: Список ошибок обработки (из Services слоя)
+    /// КРИТИЧЕСКИ ВАЖНО: это свойство использовалось в ошибках компиляции
+    /// </summary>
+    public List<string> Errors { get; set; } = new();
+
+    /// <summary>
+    /// ВОССТАНОВЛЕНО: Список предупреждений (из Services слоя)
+    /// КРИТИЧЕСКИ ВАЖНО: это свойство использовалось в ошибках компиляции
+    /// </summary>
+    public List<string> Warnings { get; set; } = new();
+
+    #endregion
+
+    #region Computed Properties
 
     /// <summary>
     /// Процент успешности обработки
     /// </summary>
     [JsonIgnore]
-    public double SuccessPercentage
-    {
-        get
-        {
-            return TotalProcessed > 0
-                ? (double)SuccessfullyProcessed / TotalProcessed * 100
-                : 0;
-        }
-    }
+    public double SuccessPercentage => TotalProcessed > 0
+        ? (double)SuccessfullyProcessed / TotalProcessed * 100
+        : 0;
+
+    /// <summary>
+    /// ВОССТАНОВЛЕНО: Коэффициент успешности (из Services слоя)
+    /// </summary>
+    [JsonIgnore]
+    public double SuccessRate => TotalProcessed > 0
+        ? (double)SuccessfullyProcessed / TotalProcessed
+        : 0;
 
     /// <summary>
     /// Есть ли ошибки в процессе обработки
@@ -227,33 +252,15 @@ public sealed class ProcessingStatistics
     [JsonIgnore]
     public bool IsSuccessful => ErrorCount == 0 && TotalProcessed > 0;
 
-    #endregion
-
-    #region Factory Methods
-
     /// <summary>
-    /// Создает новую статистику с началом отсчета времени
+    /// Обработка завершена (есть время окончания)
     /// </summary>
-    /// <returns>Новый экземпляр ProcessingStatistics</returns>
-    public static ProcessingStatistics StartNew()
-    {
-        return new ProcessingStatistics
-        {
-            StartTime = DateTime.UtcNow
-        };
-    }
-
-    /// <summary>
-    /// Завершает подсчет статистики
-    /// </summary>
-    public void Finish()
-    {
-        EndTime = DateTime.UtcNow;
-    }
+    [JsonIgnore]
+    public bool IsCompleted => EndTime.HasValue;
 
     #endregion
 
-    #region Helper Methods
+    #region Thread-Safe Operations
 
     /// <summary>
     /// Увеличивает счетчик успешно обработанных элементов
@@ -303,6 +310,48 @@ public sealed class ProcessingStatistics
         Interlocked.Add(ref _bytesProcessed, bytes);
     }
 
+    #endregion
+
+    #region Utility Methods
+
+    /// <summary>
+    /// Добавляет ошибку в список
+    /// Потокобезопасная операция
+    /// </summary>
+    public void AddError(string error)
+    {
+        if (!string.IsNullOrWhiteSpace(error))
+        {
+            lock (Errors)
+            {
+                if (!Errors.Contains(error))
+                {
+                    Errors.Add(error);
+                    IncrementError();
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Добавляет предупреждение в список
+    /// Потокобезопасная операция
+    /// </summary>
+    public void AddWarning(string warning)
+    {
+        if (!string.IsNullOrWhiteSpace(warning))
+        {
+            lock (Warnings)
+            {
+                if (!Warnings.Contains(warning))
+                {
+                    Warnings.Add(warning);
+                    IncrementWarning();
+                }
+            }
+        }
+    }
+
     /// <summary>
     /// Объединяет статистику с другим экземпляром
     /// Полезно для агрегации результатов параллельной обработки
@@ -311,6 +360,7 @@ public sealed class ProcessingStatistics
     {
         if (other == null) return;
 
+        // Суммируем основные счетчики
         TotalProcessed += other.TotalProcessed;
         SuccessfullyProcessed += other.SuccessfullyProcessed;
         ErrorCount += other.ErrorCount;
@@ -319,23 +369,68 @@ public sealed class ProcessingStatistics
         DuplicateCount += other.DuplicateCount;
         InvalidValueCount += other.InvalidValueCount;
         MissingDataCount += other.MissingDataCount;
-        FilesProcessed += other.FilesProcessed;
+
+        // Файлы и данные
+        TotalFiles += other.TotalFiles;
+        ProcessedFiles += other.ProcessedFiles;
+        ErrorFiles += other.ErrorFiles;
+        SkippedFiles += other.SkippedFiles;
         BytesProcessed += other.BytesProcessed;
         ItemsFound += other.ItemsFound;
         ItemsNormalized += other.ItemsNormalized;
 
-        // Выбираем наиболее раннее время начала
+        // ВОССТАНОВЛЕНО: Маршруты (из Services слоя)
+        TotalRoutes += other.TotalRoutes;
+        ProcessedRoutes += other.ProcessedRoutes;
+        DuplicateRoutes += other.DuplicateRoutes;
+
+        // Время - выбираем границы
         if (other.StartTime < StartTime)
             StartTime = other.StartTime;
 
-        // Выбираем наиболее позднее время окончания
         if (other.EndTime.HasValue && (!EndTime.HasValue || other.EndTime > EndTime))
             EndTime = other.EndTime;
+
+        // Объединяем списки ошибок и предупреждений
+        lock (Errors)
+        {
+            foreach (var error in other.Errors.Where(e => !Errors.Contains(e)))
+                Errors.Add(error);
+        }
+
+        lock (Warnings)
+        {
+            foreach (var warning in other.Warnings.Where(w => !Warnings.Contains(w)))
+                Warnings.Add(warning);
+        }
     }
 
     #endregion
 
-    #region ToString for Debugging
+    #region Factory Methods
+
+    /// <summary>
+    /// Создает новую статистику с началом отсчета времени
+    /// </summary>
+    public static ProcessingStatistics StartNew()
+    {
+        return new ProcessingStatistics
+        {
+            StartTime = DateTime.UtcNow
+        };
+    }
+
+    /// <summary>
+    /// Завершает подсчет статистики
+    /// </summary>
+    public void Finish()
+    {
+        EndTime = DateTime.UtcNow;
+    }
+
+    #endregion
+
+    #region Overrides
 
     /// <summary>
     /// Возвращает детальную информацию о статистике для отладки
@@ -345,6 +440,76 @@ public sealed class ProcessingStatistics
         return $"ProcessingStatistics: {SuccessfullyProcessed}/{TotalProcessed} успешно " +
                $"({SuccessPercentage:F1}%), {ErrorCount} ошибок, " +
                $"{Duration.TotalSeconds:F1}с, {ProcessingRate:F1} эл/сек";
+    }
+
+    public override bool Equals(object? obj)
+    {
+        return obj is ProcessingStatistics other &&
+               TotalProcessed == other.TotalProcessed &&
+               SuccessfullyProcessed == other.SuccessfullyProcessed &&
+               ErrorCount == other.ErrorCount &&
+               StartTime == other.StartTime;
+    }
+
+    public override int GetHashCode()
+    {
+        return HashCode.Combine(TotalProcessed, SuccessfullyProcessed, ErrorCount, StartTime);
+    }
+
+    #endregion
+
+    #region Report Generation
+
+    /// <summary>
+    /// Генерирует подробный отчет о статистике
+    /// </summary>
+    public string GenerateDetailedReport()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("=== СТАТИСТИКА ОБРАБОТКИ ===");
+        sb.AppendLine($"Период: {StartTime:yyyy-MM-dd HH:mm:ss} - {(EndTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "В процессе")}");
+        sb.AppendLine($"Длительность: {Duration.TotalMinutes:F2} минут");
+        sb.AppendLine();
+
+        sb.AppendLine("--- ОБЩИЕ ПОКАЗАТЕЛИ ---");
+        sb.AppendLine($"Обработано элементов: {TotalProcessed}");
+        sb.AppendLine($"Успешно: {SuccessfullyProcessed} ({SuccessPercentage:F1}%)");
+        sb.AppendLine($"Ошибки: {ErrorCount}");
+        sb.AppendLine($"Пропущено: {SkippedCount}");
+        sb.AppendLine($"Предупреждения: {WarningCount}");
+        sb.AppendLine($"Скорость: {ProcessingRate:F1} элементов/сек");
+        sb.AppendLine();
+
+        if (TotalFiles > 0)
+        {
+            sb.AppendLine("--- ФАЙЛЫ ---");
+            sb.AppendLine($"Всего файлов: {TotalFiles}");
+            sb.AppendLine($"Обработано: {ProcessedFiles}");
+            sb.AppendLine($"С ошибками: {ErrorFiles}");
+            sb.AppendLine($"Пропущено: {SkippedFiles}");
+            sb.AppendLine($"Размер данных: {BytesProcessed / 1024.0 / 1024.0:F2} МБ");
+            sb.AppendLine();
+        }
+
+        if (TotalRoutes > 0)
+        {
+            sb.AppendLine("--- МАРШРУТЫ ---");
+            sb.AppendLine($"Всего маршрутов: {TotalRoutes}");
+            sb.AppendLine($"Обработано: {ProcessedRoutes}");
+            sb.AppendLine($"Дубликатов: {DuplicateRoutes}");
+            sb.AppendLine();
+        }
+
+        if (HasErrors)
+        {
+            sb.AppendLine("--- ОШИБКИ ---");
+            foreach (var error in Errors.Take(10))
+                sb.AppendLine($"• {error}");
+            if (Errors.Count > 10)
+                sb.AppendLine($"... и еще {Errors.Count - 10} ошибок");
+        }
+
+        return sb.ToString();
     }
 
     #endregion

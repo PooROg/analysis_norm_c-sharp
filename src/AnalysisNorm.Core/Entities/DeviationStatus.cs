@@ -1,197 +1,256 @@
-// === AnalysisNorm.Core/Entities/DeviationStatus.cs ===
-using System.ComponentModel.DataAnnotations;
-using System.Runtime.CompilerServices; // ДОБАВЛЕНО: для MethodImpl
+using System.ComponentModel;
+using System.Text.Json.Serialization;
 
 namespace AnalysisNorm.Core.Entities;
 
 /// <summary>
-/// Единый enum для статусов отклонений расхода от нормы
-/// Соответствует StatusClassifier из Python utils.py
-/// Заменяет все дублированные static классы DeviationStatus в проекте
+/// Статус отклонения расхода от нормы
 /// </summary>
-public enum DeviationStatus : byte // byte для экономии памяти - всего 7 значений
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum DeviationStatus
 {
-    [Display(Name = "Экономия сильная")]
-    EconomyStrong = 0,
+    /// <summary>
+    /// Неизвестно / не определено
+    /// </summary>
+    [Description("Не определено")]
+    Unknown = 0,
 
-    [Display(Name = "Экономия средняя")]
-    EconomyMedium = 1,
+    /// <summary>
+    /// Сильная экономия (больше -10%)
+    /// </summary>
+    [Description("Сильная экономия")]
+    StrongEconomy = 1,
 
-    [Display(Name = "Экономия слабая")]
-    EconomyWeak = 2,
+    /// <summary>
+    /// Средняя экономия (-5% до -10%)
+    /// </summary>
+    [Description("Средняя экономия")]
+    MediumEconomy = 2,
 
-    [Display(Name = "Норма")]
-    Normal = 3,
+    /// <summary>
+    /// Слабая экономия (-2% до -5%)
+    /// </summary>
+    [Description("Слабая экономия")]
+    WeakEconomy = 3,
 
-    [Display(Name = "Перерасход слабый")]
-    OverrunWeak = 4,
+    /// <summary>
+    /// В пределах нормы (-2% до +2%)
+    /// </summary>
+    [Description("Норма")]
+    Normal = 4,
 
-    [Display(Name = "Перерасход средний")]
-    OverrunMedium = 5,
+    /// <summary>
+    /// Слабый перерасход (2% до 5%)
+    /// </summary>
+    [Description("Слабый перерасход")]
+    WeakOverrun = 5,
 
-    [Display(Name = "Перерасход сильный")]
-    OverrunStrong = 6
+    /// <summary>
+    /// Средний перерасход (5% до 10%)
+    /// </summary>
+    [Description("Средний перерасход")]
+    MediumOverrun = 6,
+
+    /// <summary>
+    /// Сильный перерасход (больше 10%)
+    /// </summary>
+    [Description("Сильный перерасход")]
+    StrongOverrun = 7
 }
 
 /// <summary>
-/// Высокопроизводительные методы для работы со статусами отклонений
-/// ИСПРАВЛЕНО: Добавлен статический метод GetStatus
-/// Консолидирует функциональность из всех дублированных DeviationStatus static классов
-/// Оптимизирован для минимального allocation и максимальной скорости
+/// Вспомогательный класс для работы с DeviationStatus
+/// ИСПРАВЛЕНО: убраны некорректные операторы преобразования из статического класса
 /// </summary>
 public static class DeviationStatusHelper
 {
-    #region Константы порогов (из Python StatusClassifier)
-
-    private const decimal StrongEconomyThreshold = -30m;
-    private const decimal MediumEconomyThreshold = -20m;
-    private const decimal WeakEconomyThreshold = -5m;
-    private const decimal NormalUpperThreshold = 5m;
-    private const decimal WeakOverrunThreshold = 10m;
-    private const decimal MediumOverrunThreshold = 20m;
-
-    #endregion
-
-    #region Static Classification Methods - ИСПРАВЛЕНО
-
     /// <summary>
-    /// Классифицирует отклонение по статусу
-    /// ИСПРАВЛЕНО: Добавлен недостающий статический метод GetStatus
-    /// Соответствует Python StatusClassifier.get_status
+    /// Определяет статус отклонения на основе процентного значения
+    /// ИСПРАВЛЕНО: добавлен недостающий метод GetStatus
     /// </summary>
-    /// <param name="deviationPercent">Отклонение в процентах</param>
+    /// <param name="deviationPercentage">Процентное отклонение</param>
     /// <returns>Статус отклонения</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static DeviationStatus GetStatus(decimal deviationPercent)
+    public static DeviationStatus GetStatus(decimal deviationPercentage)
     {
-        return deviationPercent switch
+        return deviationPercentage switch
         {
-            <= StrongEconomyThreshold => DeviationStatus.EconomyStrong,
-            <= MediumEconomyThreshold => DeviationStatus.EconomyMedium,
-            <= WeakEconomyThreshold => DeviationStatus.EconomyWeak,
-            <= NormalUpperThreshold => DeviationStatus.Normal,
-            <= WeakOverrunThreshold => DeviationStatus.OverrunWeak,
-            <= MediumOverrunThreshold => DeviationStatus.OverrunMedium,
-            _ => DeviationStatus.OverrunStrong
+            <= -10m => DeviationStatus.StrongEconomy,
+            <= -5m => DeviationStatus.MediumEconomy,
+            <= -2m => DeviationStatus.WeakEconomy,
+            <= 2m => DeviationStatus.Normal,
+            <= 5m => DeviationStatus.WeakOverrun,
+            <= 10m => DeviationStatus.MediumOverrun,
+            _ => DeviationStatus.StrongOverrun
         };
     }
 
     /// <summary>
-    /// Получает статус как строку для отображения
-    /// ИСПРАВЛЕНО: Для правильного преобразования DeviationStatus в string
+    /// Получает описание статуса
     /// </summary>
-    public static string GetStatusText(DeviationStatus status)
+    public static string GetDescription(DeviationStatus status)
+    {
+        var field = status.GetType().GetField(status.ToString());
+        var attribute = field?.GetCustomAttributes(typeof(DescriptionAttribute), false)
+            .FirstOrDefault() as DescriptionAttribute;
+
+        return attribute?.Description ?? status.ToString();
+    }
+
+    /// <summary>
+    /// Получает цветовое представление статуса для UI
+    /// </summary>
+    public static string GetColor(DeviationStatus status)
     {
         return status switch
         {
-            DeviationStatus.EconomyStrong => "Экономия сильная",
-            DeviationStatus.EconomyMedium => "Экономия средняя",
-            DeviationStatus.EconomyWeak => "Экономия слабая",
-            DeviationStatus.Normal => "Норма",
-            DeviationStatus.OverrunWeak => "Перерасход слабый",
-            DeviationStatus.OverrunMedium => "Перерасход средний",
-            DeviationStatus.OverrunStrong => "Перерасход сильный",
-            _ => "Неопределено"
+            DeviationStatus.StrongEconomy => "#1B5E20", // Темно-зеленый
+            DeviationStatus.MediumEconomy => "#2E7D32", // Зеленый
+            DeviationStatus.WeakEconomy => "#388E3C", // Светло-зеленый
+            DeviationStatus.Normal => "#1976D2", // Синий
+            DeviationStatus.WeakOverrun => "#F57C00", // Оранжевый
+            DeviationStatus.MediumOverrun => "#E64A19", // Красно-оранжевый
+            DeviationStatus.StrongOverrun => "#D32F2F", // Красный
+            _ => "#9E9E9E" // Серый для Unknown
         };
     }
 
     /// <summary>
-    /// Неявное преобразование DeviationStatus в string для совместимости
-    /// ИСПРАВЛЕНО: Решает проблемы CS1503 с преобразованием типов
+    /// Получает символьное представление статуса
     /// </summary>
-    public static implicit operator string(DeviationStatus status)
+    public static string GetSymbol(DeviationStatus status)
     {
-        return GetStatusText(status);
-    }
-
-    #endregion
-
-    #region Color Mapping для UI
-
-    /// <summary>
-    /// Получает цвет для статуса отклонения
-    /// Thread-safe массив предвычисленных цветов для производительности
-    /// </summary>
-    private static readonly string[] StatusColors =
-    {
-        "darkgreen",    // EconomyStrong
-        "green",        // EconomyMedium  
-        "lightgreen",   // EconomyWeak
-        "blue",         // Normal
-        "orange",       // OverrunWeak
-        "darkorange",   // OverrunMedium
-        "red"           // OverrunStrong
-    };
-
-    /// <summary>
-    /// Возвращает цвет для отображения статуса
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static string GetStatusColor(DeviationStatus status)
-    {
-        var index = (int)status;
-        return index < StatusColors.Length ? StatusColors[index] : "gray";
-    }
-
-    #endregion
-
-    #region Константы для внешнего использования
-
-    /// <summary>
-    /// Публичные константы порогов для использования в других частях системы
-    /// </summary>
-    public static class Thresholds
-    {
-        public const decimal StrongEconomy = StrongEconomyThreshold;
-        public const decimal MediumEconomy = MediumEconomyThreshold;
-        public const decimal WeakEconomy = WeakEconomyThreshold;
-        public const decimal NormalUpper = NormalUpperThreshold;
-        public const decimal WeakOverrun = WeakOverrunThreshold;
-        public const decimal MediumOverrun = MediumOverrunThreshold;
-    }
-
-    #endregion
-
-    #region Batch операции для производительности
-
-    /// <summary>
-    /// Обрабатывает массив отклонений за один проход
-    /// Оптимизировано для bulk операций в аналитических отчетах
-    /// </summary>
-    public static DeviationStatus[] GetStatusesBatch(ReadOnlySpan<decimal> deviations)
-    {
-        var results = new DeviationStatus[deviations.Length];
-
-        for (int i = 0; i < deviations.Length; i++)
+        return status switch
         {
-            results[i] = GetStatus(deviations[i]);
+            DeviationStatus.StrongEconomy => "⬇⬇⬇",
+            DeviationStatus.MediumEconomy => "⬇⬇",
+            DeviationStatus.WeakEconomy => "⬇",
+            DeviationStatus.Normal => "=",
+            DeviationStatus.WeakOverrun => "⬆",
+            DeviationStatus.MediumOverrun => "⬆⬆",
+            DeviationStatus.StrongOverrun => "⬆⬆⬆",
+            _ => "?"
+        };
+    }
+
+    /// <summary>
+    /// Проверяет является ли статус экономией
+    /// </summary>
+    public static bool IsEconomy(DeviationStatus status)
+    {
+        return status is DeviationStatus.StrongEconomy
+            or DeviationStatus.MediumEconomy
+            or DeviationStatus.WeakEconomy;
+    }
+
+    /// <summary>
+    /// Проверяет является ли статус перерасходом
+    /// </summary>
+    public static bool IsOverrun(DeviationStatus status)
+    {
+        return status is DeviationStatus.WeakOverrun
+            or DeviationStatus.MediumOverrun
+            or DeviationStatus.StrongOverrun;
+    }
+
+    /// <summary>
+    /// Проверяет является ли статус нормой
+    /// </summary>
+    public static bool IsNormal(DeviationStatus status)
+    {
+        return status == DeviationStatus.Normal;
+    }
+
+    /// <summary>
+    /// Преобразует статус в строку для экспорта
+    /// ИСПРАВЛЕНО: добавлен метод для безопасного преобразования в строку
+    /// </summary>
+    public static string ToString(DeviationStatus status)
+    {
+        return GetDescription(status);
+    }
+
+    /// <summary>
+    /// Парсит строку в статус отклонения
+    /// </summary>
+    public static DeviationStatus Parse(string? statusString)
+    {
+        if (string.IsNullOrWhiteSpace(statusString))
+            return DeviationStatus.Unknown;
+
+        // Пробуем парсить по названию enum
+        if (Enum.TryParse<DeviationStatus>(statusString, true, out var status))
+            return status;
+
+        // Пробуем парсить по описанию
+        foreach (DeviationStatus enumStatus in Enum.GetValues<DeviationStatus>())
+        {
+            if (GetDescription(enumStatus).Equals(statusString, StringComparison.OrdinalIgnoreCase))
+                return enumStatus;
         }
 
-        return results;
+        return DeviationStatus.Unknown;
     }
 
     /// <summary>
-    /// Подсчитывает статистику по статусам для dashboard
-    /// Возвращает количество каждого типа отклонения
+    /// Получает все доступные статусы с описаниями
     /// </summary>
-    public static Dictionary<DeviationStatus, int> GetStatusStatistics(IEnumerable<DeviationStatus> statuses)
+    public static Dictionary<DeviationStatus, string> GetAllStatusesWithDescriptions()
     {
-        var stats = new Dictionary<DeviationStatus, int>();
+        return Enum.GetValues<DeviationStatus>()
+            .ToDictionary(status => status, GetDescription);
+    }
+}
 
-        // Инициализируем все статусы нулями
-        foreach (DeviationStatus status in Enum.GetValues<DeviationStatus>())
-        {
-            stats[status] = 0;
-        }
-
-        // Подсчитываем
-        foreach (var status in statuses)
-        {
-            stats[status]++;
-        }
-
-        return stats;
+/// <summary>
+/// Расширения для DeviationStatus
+/// </summary>
+public static class DeviationStatusExtensions
+{
+    /// <summary>
+    /// Получает описание статуса
+    /// </summary>
+    public static string GetDescription(this DeviationStatus status)
+    {
+        return DeviationStatusHelper.GetDescription(status);
     }
 
-    #endregion
+    /// <summary>
+    /// Получает цвет статуса
+    /// </summary>
+    public static string GetColor(this DeviationStatus status)
+    {
+        return DeviationStatusHelper.GetColor(status);
+    }
+
+    /// <summary>
+    /// Получает символ статуса
+    /// </summary>
+    public static string GetSymbol(this DeviationStatus status)
+    {
+        return DeviationStatusHelper.GetSymbol(status);
+    }
+
+    /// <summary>
+    /// Проверяет является ли статус экономией
+    /// </summary>
+    public static bool IsEconomy(this DeviationStatus status)
+    {
+        return DeviationStatusHelper.IsEconomy(status);
+    }
+
+    /// <summary>
+    /// Проверяет является ли статус перерасходом
+    /// </summary>
+    public static bool IsOverrun(this DeviationStatus status)
+    {
+        return DeviationStatusHelper.IsOverrun(status);
+    }
+
+    /// <summary>
+    /// Проверяет является ли статус нормой
+    /// </summary>
+    public static bool IsNormal(this DeviationStatus status)
+    {
+        return DeviationStatusHelper.IsNormal(status);
+    }
 }

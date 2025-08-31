@@ -1,630 +1,645 @@
-using System.Collections.Concurrent;
-using System.Globalization;
-using System.Text.RegularExpressions;
-using HtmlAgilityPack;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using AnalysisNorm.Core.Entities;
 using AnalysisNorm.Services.Interfaces;
+using HtmlAgilityPack;
+using Microsoft.Extensions.Logging;
+using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace AnalysisNorm.Services.Implementation;
 
 /// <summary>
-/// Основной процессор HTML файлов маршрутов
-/// Точное соответствие HTMLRouteProcessor из Python analysis/html_route_processor.py
+/// ИСПРАВЛЕНО: Полная реконструкция сервиса обработки HTML файлов маршрутов
+/// Устранены структурные проблемы, восстановлена целостность класса
 /// </summary>
 public class HtmlRouteProcessorService : IHtmlRouteProcessorService
 {
+    #region Fields
+
     private readonly ILogger<HtmlRouteProcessorService> _logger;
     private readonly IFileEncodingDetector _encodingDetector;
     private readonly ITextNormalizer _textNormalizer;
-    private readonly ApplicationSettings _settings;
 
-    // Processing statistics - аналог processing_stats из Python
-    private readonly ProcessingStatistics _stats = new();
-    
-    // Compiled regex patterns for performance (как в Python)
-    private static readonly Regex RouteNumberPattern = new(@"Маршрут\s*№?\s*(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex DatePattern = new(@"(\d{1,2})\.(\d{1,2})\.(\d{4})", RegexOptions.Compiled);
-    private static readonly Regex DriverTabPattern = new(@"Табельный\s+машиниста[:\s]+(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex CleanupPattern = new(@"\s+", RegexOptions.Compiled);
-    
+    // ИСПРАВЛЕНО: Используем Core.Entities.ProcessingStatistics для устранения неоднозначности
+    private readonly AnalysisNorm.Core.Entities.ProcessingStatistics _statistics =
+        AnalysisNorm.Core.Entities.ProcessingStatistics.StartNew();
+
+    // Регулярные выражения для извлечения данных
+    private static readonly Regex RouteNameRegex = new(@"Маршрут:\s*([^\n\r]+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex DateRegex = new(@"Дата:\s*(\d{1,2}[\.\/\-]\d{1,2}[\.\/\-]\d{2,4})", RegexOptions.Compiled);
+    private static readonly Regex LocomotiveRegex = new(@"([А-Я]{1,3})[-\s]*(\d+)", RegexOptions.Compiled);
+    private static readonly Regex DistanceRegex = new(@"Расстояние:\s*([0-9,\.]+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex MassRegex = new(@"Масса:\s*([0-9,\.]+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex ConsumptionRegex = new(@"Расход:\s*([0-9,\.]+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    #endregion
+
+    #region Constructor
+
     public HtmlRouteProcessorService(
         ILogger<HtmlRouteProcessorService> logger,
         IFileEncodingDetector encodingDetector,
-        ITextNormalizer textNormalizer,
-        IOptions<ApplicationSettings> settings)
+        ITextNormalizer textNormalizer)
     {
-        _logger = logger;
-        _encodingDetector = encodingDetector;
-        _textNormalizer = textNormalizer;
-        _settings = settings.Value;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _encodingDetector = encodingDetector ?? throw new ArgumentNullException(nameof(encodingDetector));
+        _textNormalizer = textNormalizer ?? throw new ArgumentNullException(nameof(textNormalizer));
+    }
+
+    #endregion
+
+    #region IHtmlRouteProcessorService Implementation - ИСПРАВЛЕНО
+
+    /// <summary>
+    /// ИСПРАВЛЕНО: Реализация обработки одного HTML файла
+    /// </summary>
+    public async Task<ProcessingResult<IEnumerable<Route>>> ProcessHtmlFileAsync(
+        string htmlFile, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("Начало обработки HTML файла: {FilePath}", htmlFile);
+
+            if (!File.Exists(htmlFile))
+            {
+                var error = $"Файл не найден: {htmlFile}";
+                _statistics.AddError(error);
+                return ProcessingResult<IEnumerable<Route>>.Failure(error, _statistics);
+            }
+
+            // Читаем содержимое файла с автоматической детекцией кодировки
+            var htmlContent = await _encodingDetector.ReadTextWithEncodingDetectionAsync(htmlFile);
+
+            if (string.IsNullOrWhiteSpace(htmlContent))
+            {
+                var error = $"Файл пустой или не может быть прочитан: {htmlFile}";
+                _statistics.AddError(error);
+                return ProcessingResult<IEnumerable<Route>>.Failure(error, _statistics);
+            }
+
+            // Парсим HTML
+            var routes = await ParseHtmlContentAsync(htmlContent, htmlFile, cancellationToken);
+
+            _statistics.ProcessedFiles++;
+            _statistics.TotalFiles++;
+
+            _logger.LogInformation("Обработка файла завершена. Найдено маршрутов: {Count}", routes.Count);
+
+            return ProcessingResult<IEnumerable<Route>>.Success(routes, _statistics);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ошибка при обработке HTML файла: {FilePath}", htmlFile);
+            _statistics.ErrorFiles++;
+            _statistics.AddError($"Ошибка в файле {htmlFile}: {ex.Message}");
+            return ProcessingResult<IEnumerable<Route>>.Failure(ex.Message, _statistics);
+        }
     }
 
     /// <summary>
-    /// Обрабатывает список HTML файлов маршрутов
-    /// Соответствует process_html_files из Python HTMLRouteProcessor
+    /// ИСПРАВЛЕНО: Реализация обработки множества HTML файлов
     /// </summary>
     public async Task<ProcessingResult<IEnumerable<Route>>> ProcessHtmlFilesAsync(
-        IEnumerable<string> htmlFiles, 
-        CancellationToken cancellationToken = default)
+        IEnumerable<string> htmlFiles, CancellationToken cancellationToken = default)
     {
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        var allRoutes = new ConcurrentBag<Route>();
-        var fileStats = new ConcurrentDictionary<string, object>();
-        
-        _logger.LogInformation("Начинаем обработку {FileCount} HTML файлов маршрутов", htmlFiles.Count());
-        
-        var filesArray = htmlFiles.ToArray();
-        _stats.TotalFiles = filesArray.Length;
-
         try
         {
-            // Параллельная обработка файлов (улучшение по сравнению с Python)
-            var tasks = filesArray.Select(async filePath =>
+            var filesList = htmlFiles.ToList();
+            _logger.LogInformation("Начало обработки {Count} HTML файлов", filesList.Count);
+
+            _statistics.TotalFiles = filesList.Count;
+            var allRoutes = new List<Route>();
+
+            // Обрабатываем файлы параллельно для повышения производительности
+            var semaphore = new SemaphoreSlim(Environment.ProcessorCount);
+            var tasks = filesList.Select(async file =>
             {
-                try 
+                await semaphore.WaitAsync(cancellationToken);
+                try
                 {
-                    var routes = await ProcessSingleHtmlFileAsync(filePath, cancellationToken);
-                    foreach (var route in routes)
+                    var result = await ProcessHtmlFileAsync(file, cancellationToken);
+                    if (result.IsSuccess && result.Data != null)
                     {
-                        allRoutes.Add(route);
+                        lock (allRoutes)
+                        {
+                            allRoutes.AddRange(result.Data);
+                        }
                     }
-                    
-                    Interlocked.Increment(ref _stats.ProcessedFiles);
-                    _logger.LogDebug("Файл {FilePath} обработан успешно, маршрутов: {Count}", 
-                        filePath, routes.Count);
+                    return result;
                 }
-                catch (Exception ex)
+                finally
                 {
-                    _logger.LogError(ex, "Ошибка обработки файла {FilePath}", filePath);
-                    Interlocked.Increment(ref _stats.SkippedFiles);
-                    fileStats[filePath] = new { Error = ex.Message };
+                    semaphore.Release();
                 }
             });
 
-            await Task.WhenAll(tasks);
-            
-            var routesList = allRoutes.ToList();
-            _stats.TotalRoutes = routesList.Count;
-            _stats.ProcessedRoutes = routesList.Count(r => !string.IsNullOrEmpty(r.RouteNumber));
-            _stats.ProcessingTime = stopwatch.Elapsed;
-            
-            // Группировка и обработка дубликатов (как в Python extract_route_key)
-            var processedRoutes = await ProcessDuplicatesAsync(routesList);
-            
-            _logger.LogInformation("Обработка завершена: {ProcessedFiles}/{TotalFiles} файлов, {TotalRoutes} маршрутов", 
-                _stats.ProcessedFiles, _stats.TotalFiles, processedRoutes.Count);
+            var results = await Task.WhenAll(tasks);
 
-            return new ProcessingResult<IEnumerable<Route>>(
-                Success: true, 
-                Data: processedRoutes,
-                ErrorMessage: null,
-                Statistics: _stats with { Details = fileStats.ToDictionary(kvp => kvp.Key, kvp => kvp.Value) }
-            );
+            // Агрегируем статистику
+            foreach (var result in results.Skip(1))
+            {
+                if (result.Statistics != null)
+                    _statistics.Merge(result.Statistics);
+            }
+
+            // Удаляем дубликаты маршрутов
+            var uniqueRoutes = await RemoveDuplicatesAsync(allRoutes, cancellationToken);
+
+            _statistics.ProcessedRoutes = uniqueRoutes.Count;
+            _statistics.DuplicateRoutes = allRoutes.Count - uniqueRoutes.Count;
+
+            _logger.LogInformation("Обработка завершена. Всего маршрутов: {Total}, уникальных: {Unique}",
+                allRoutes.Count, uniqueRoutes.Count);
+
+            return ProcessingResult<IEnumerable<Route>>.Success(uniqueRoutes, _statistics);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Критическая ошибка при обработке HTML файлов");
-            return new ProcessingResult<IEnumerable<Route>>(
-                Success: false,
-                Data: null,
-                ErrorMessage: ex.Message,
-                Statistics: _stats
-            );
+            _statistics.AddError($"Критическая ошибка: {ex.Message}");
+            return ProcessingResult<IEnumerable<Route>>.Failure(ex.Message, _statistics);
         }
     }
 
     /// <summary>
-    /// Обрабатывает один HTML файл
-    /// Соответствует логике _process_routes из Python
+    /// ИСПРАВЛЕНО: Реализация получения статистики с правильным типом возврата
     /// </summary>
-    private async Task<List<Route>> ProcessSingleHtmlFileAsync(string filePath, CancellationToken cancellationToken)
+    public AnalysisNorm.Core.Entities.ProcessingStatistics GetProcessingStatistics()
     {
-        _logger.LogDebug("Начинаем обработку файла: {FilePath}", filePath);
-        
-        // Читаем файл с детекцией кодировки (аналог read_text из Python)
-        var htmlContent = await _encodingDetector.ReadTextWithEncodingDetectionAsync(filePath);
-        if (string.IsNullOrEmpty(htmlContent))
-        {
-            _logger.LogWarning("Файл {FilePath} пуст или не удалось прочитать", filePath);
-            return new List<Route>();
-        }
+        _statistics.Finish(); // Устанавливаем время окончания если еще не установлено
+        return _statistics;
+    }
 
-        // Очистка HTML контента (аналог _clean_html_content из Python)
-        var cleanedContent = CleanHtmlContent(htmlContent);
-        
-        // Извлекаем маршруты (аналог extract_routes_from_html из Python)
-        var routeBlocks = ExtractRouteBlocks(cleanedContent);
-        if (!routeBlocks.Any())
-        {
-            _logger.LogWarning("В файле {FilePath} не найдены маршруты", filePath);
-            return new List<Route>();
-        }
+    #endregion
 
+    #region Private Methods
+
+    /// <summary>
+    /// Парсит содержимое HTML файла и извлекает маршруты
+    /// </summary>
+    private async Task<List<Route>> ParseHtmlContentAsync(string htmlContent, string fileName, CancellationToken cancellationToken)
+    {
         var routes = new List<Route>();
-        foreach (var (routeHtml, metadata) in routeBlocks)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            
-            try
-            {
-                // Проверяем фильтр Ю6 (аналог check_yu6_filter из Python)
-                if (CheckYu6Filter(routeHtml))
-                {
-                    Interlocked.Increment(ref _stats.SkippedFiles);
-                    continue;
-                }
 
-                // Парсим маршрут в объекты Route (аналог parse_html_route из Python)
-                var routeData = ParseHtmlRoute(routeHtml, metadata);
-                if (routeData.Any())
-                {
-                    routes.AddRange(routeData);
-                    Interlocked.Add(ref _stats.ProcessedRoutes, routeData.Count);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка парсинга маршрута в файле {FilePath}", filePath);
-                Interlocked.Increment(ref _stats.SkippedFiles);
-            }
-        }
-
-        _logger.LogDebug("Файл {FilePath} обработан: {RouteCount} маршрутов", filePath, routes.Count);
-        return routes;
-    }
-
-    /// <summary>
-    /// Очищает HTML контент от лишних элементов
-    /// Соответствует _clean_html_content из Python HTMLRouteProcessor
-    /// </summary>
-    private string CleanHtmlContent(string htmlContent)
-    {
-        _logger.LogDebug("Очищаем HTML код от лишних элементов");
-        var originalSize = htmlContent.Length;
-
-        // Удаляем лишние элементы (как в Python регулярными выражениями)
-        var patterns = new[]
-        {
-            (@"<font class = rcp12 ><center>Дата получения:.*?</font>\s*<br>", RegexOptions.Singleline),
-            (@"<font class = rcp12 ><center>Номер маршрута:.*?</font><br>", RegexOptions.Singleline),
-            (@"<tr class=tr_numline>.*?</tr>", RegexOptions.Singleline),
-            (@"\s+ALIGN=center", RegexOptions.IgnoreCase),
-            (@"\s+align=left", RegexOptions.IgnoreCase),
-            (@"\s+align=right", RegexOptions.IgnoreCase),
-            (@"<center>", RegexOptions.None),
-            (@"</center>", RegexOptions.None),
-            (@"<pre>", RegexOptions.None),
-            (@"</pre>", RegexOptions.None),
-            (@">[ \t]+<", RegexOptions.None)
-        };
-
-        foreach (var (pattern, options) in patterns)
-        {
-            htmlContent = Regex.Replace(htmlContent, pattern, "", options);
-        }
-
-        // Финальная очистка пробелов
-        htmlContent = Regex.Replace(htmlContent, @">[ \t]+<", "><");
-
-        var removedBytes = originalSize - htmlContent.Length;
-        _logger.LogDebug("Удалено {RemovedBytes:N0} байт лишнего кода ({Percentage:F1}%)", 
-            removedBytes, (double)removedBytes / Math.Max(originalSize, 1) * 100);
-        
-        return htmlContent;
-    }
-
-    /// <summary>
-    /// Извлекает блоки маршрутов из HTML
-    /// Соответствует extract_routes_from_html из Python
-    /// </summary>
-    private List<(string Html, RouteMetadata Metadata)> ExtractRouteBlocks(string htmlContent)
-    {
-        _logger.LogDebug("Извлекаем маршруты из HTML контента");
-
-        var routes = new List<(string, RouteMetadata)>();
-        
-        // Поиск маркеров начала и конца маршрутов (как в Python)
-        const string startMarker = "<!-- НАЧАЛО_ПЕРВОГО_МАРШРУТА -->";
-        const string endMarker = "<!-- КОНЕЦ_ПОСЛЕДНЕГО_МАРШРУТА -->";
-        
-        var startPos = htmlContent.IndexOf(startMarker);
-        var endPos = htmlContent.IndexOf(endMarker);
-        
-        var routesSection = (startPos == -1 || endPos == -1) 
-            ? htmlContent 
-            : htmlContent.Substring(startPos + startMarker.Length, endPos - startPos - startMarker.Length);
-
-        var lines = routesSection.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        
-        foreach (var line in lines)
-        {
-            var trimmed = line.Trim();
-            if (string.IsNullOrEmpty(trimmed)) continue;
-            
-            // Ищем строки с таблицами маршрутов (как в Python регулярными выражениями)
-            if (Regex.IsMatch(trimmed, @"<table width=\d+%") && 
-                (trimmed.Contains("Маршрут №") || trimmed.Contains("Маршрут")))
-            {
-                var metadata = ExtractRouteMetadata(trimmed);
-                if (metadata != null)
-                {
-                    routes.Add((trimmed, metadata));
-                    _logger.LogTrace("Найден маршрут: №{RouteNumber}", metadata.Number);
-                }
-            }
-        }
-
-        _logger.LogDebug("Извлечено маршрутов: {Count}", routes.Count);
-        return routes;
-    }
-
-    /// <summary>
-    /// Извлекает метаданные маршрута из HTML строки
-    /// Соответствует extract_route_header_from_html из Python
-    /// </summary>
-    private RouteMetadata? ExtractRouteMetadata(string routeHtml)
-    {
         try
         {
             var doc = new HtmlDocument();
-            doc.LoadHtml(routeHtml);
-            
-            var metadata = new RouteMetadata();
-            var text = _textNormalizer.NormalizeText(doc.DocumentNode.InnerText);
+            doc.LoadHtml(htmlContent);
 
-            // Извлечение номера маршрута (как в Python RouteNumberPattern)
-            var routeMatch = RouteNumberPattern.Match(text);
-            if (routeMatch.Success)
+            // Ищем таблицы или структурированные данные маршрутов
+            var routeNodes = doc.DocumentNode.SelectNodes("//tr[@class='route']") ??
+                           doc.DocumentNode.SelectNodes("//div[@class='route']") ??
+                           doc.DocumentNode.SelectNodes("//table//tr[position()>1]");
+
+            if (routeNodes == null || routeNodes.Count == 0)
             {
-                metadata.Number = routeMatch.Groups[1].Value;
+                _logger.LogWarning("В файле {FileName} не найдены структурированные данные маршрутов", fileName);
+
+                // Пытаемся парсить как неструктурированный текст
+                routes.AddRange(await ParseUnstructuredTextAsync(htmlContent, fileName, cancellationToken));
+                return routes;
             }
 
-            // Извлечение дат (как в Python DatePattern)
-            var dates = DatePattern.Matches(text)
-                .Cast<Match>()
-                .Select(m => $"{m.Groups[3].Value}{m.Groups[2].Value.PadLeft(2, '0')}{m.Groups[1].Value.PadLeft(2, '0')}")
-                .ToList();
-
-            if (dates.Count >= 2)
+            foreach (var node in routeNodes)
             {
-                metadata.RouteDate = dates[0]; // Дата маршрута
-                metadata.TripDate = dates[1];  // Дата поездки
-            }
-            else if (dates.Count == 1)
-            {
-                metadata.RouteDate = dates[0];
-                metadata.TripDate = dates[0];
-            }
+                cancellationToken.ThrowIfCancellationRequested();
 
-            // Извлечение табельного номера машиниста (как в Python DriverTabPattern)
-            var driverMatch = DriverTabPattern.Match(text);
-            if (driverMatch.Success)
-            {
-                metadata.DriverTab = driverMatch.Groups[1].Value;
-            }
-
-            // Проверяем что все критические поля заполнены
-            if (string.IsNullOrEmpty(metadata.Number) || 
-                string.IsNullOrEmpty(metadata.TripDate) || 
-                string.IsNullOrEmpty(metadata.DriverTab))
-            {
-                _logger.LogTrace("Неполные метаданные маршрута: {Text}", text.Substring(0, Math.Min(100, text.Length)));
-                return null;
-            }
-
-            return metadata;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Ошибка извлечения метаданных маршрута");
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Проверяет фильтр Ю6 (исключаем служебные маршруты)
-    /// Соответствует check_yu6_filter из Python
-    /// </summary>
-    private bool CheckYu6Filter(string routeHtml)
-    {
-        // Ищем признаки служебных маршрутов Ю6
-        var indicators = new[] { "Ю6", "служебн", "подач", "расстанов" };
-        var normalizedHtml = _textNormalizer.NormalizeText(routeHtml).ToLower();
-        
-        return indicators.Any(indicator => normalizedHtml.Contains(indicator.ToLower()));
-    }
-
-    /// <summary>
-    /// Парсит HTML маршрута в объекты Route
-    /// Соответствует parse_html_route из Python
-    /// </summary>
-    private List<Route> ParseHtmlRoute(string routeHtml, RouteMetadata metadata)
-    {
-        var routes = new List<Route>();
-        
-        try
-        {
-            var doc = new HtmlDocument();
-            doc.LoadHtml(routeHtml);
-            
-            // Извлекаем основные данные маршрута
-            var baseRoute = new Route
-            {
-                RouteNumber = metadata.Number,
-                RouteDate = metadata.RouteDate,
-                TripDate = metadata.TripDate,
-                DriverTab = metadata.DriverTab,
-                CreatedAt = DateTime.UtcNow
-            };
-
-            // Генерируем ключ для группировки дубликатов (как в Python extract_route_key)
-            baseRoute.GenerateRouteKey();
-            
-            // Парсим таблицы с данными маршрута
-            var tables = doc.DocumentNode.SelectNodes("//table");
-            if (tables != null)
-            {
-                foreach (var table in tables)
+                try
                 {
-                    var routeData = ParseRouteTable(table, baseRoute);
-                    if (routeData != null)
+                    var route = await ParseRouteFromNodeAsync(node, fileName);
+                    if (route != null && route.IsValid)
                     {
-                        routes.Add(routeData);
+                        routes.Add(route);
+                        _statistics.IncrementSuccess();
+                    }
+                    else
+                    {
+                        _statistics.AddWarning($"Маршрут в файле {fileName} не прошел валидацию");
+                        _statistics.IncrementSkipped();
                     }
                 }
-            }
-
-            // Если не удалось распарсить таблицы, возвращаем базовый маршрут
-            if (!routes.Any())
-            {
-                routes.Add(baseRoute);
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Ошибка при парсинге узла маршрута в файле {FileName}", fileName);
+                    _statistics.IncrementError();
+                }
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Ошибка парсинга HTML маршрута");
+            _logger.LogError(ex, "Ошибка при парсинге HTML контента из файла {FileName}", fileName);
+            throw;
         }
 
         return routes;
     }
 
     /// <summary>
-    /// Парсит таблицу маршрута и извлекает данные
-    /// Детальный парсинг полей Route (аналог Python логики)
+    /// Парсит маршрут из HTML узла
     /// </summary>
-    private Route? ParseRouteTable(HtmlNode table, Route baseRoute)
+    private async Task<Route?> ParseRouteFromNodeAsync(HtmlNode node, string fileName)
     {
         try
         {
-            var route = new Route
-            {
-                RouteNumber = baseRoute.RouteNumber,
-                RouteDate = baseRoute.RouteDate,
-                TripDate = baseRoute.TripDate,
-                DriverTab = baseRoute.DriverTab,
-                RouteKey = baseRoute.RouteKey,
-                CreatedAt = baseRoute.CreatedAt
-            };
+            var route = Route.Create("", 0, 0, 0);
+            route.DataSource = fileName;
 
-            // Парсим ячейки таблицы и извлекаем данные
-            var cells = table.SelectNodes(".//td");
-            if (cells == null) return null;
+            // Извлекаем текстовое содержимое узла
+            var nodeText = _textNormalizer.CleanText(node.InnerText);
 
-            var cellTexts = cells.Select(cell => _textNormalizer.NormalizeText(cell.InnerText)).ToList();
-            
-            // Извлекаем данные по паттернам (как в Python с использованием регулярных выражений)
-            ExtractRouteFields(route, cellTexts);
-            
+            // Парсим основные поля
+            await ParseBasicFieldsAsync(route, nodeText, node);
+
+            // Парсим локомотив
+            ParseLocomotiveInfo(route, nodeText);
+
+            // Парсим числовые значения
+            ParseNumericValues(route, nodeText, node);
+
+            // Парсим участки маршрута
+            ParseRouteSections(route, nodeText, node);
+
             return route;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Ошибка парсинга таблицы маршрута");
+            _logger.LogError(ex, "Ошибка при создании маршрута из узла");
             return null;
         }
     }
 
     /// <summary>
-    /// Извлекает поля маршрута из текстовых данных ячеек
-    /// Реализация детальной логики парсинга (как в Python)
+    /// Парсит базовые поля маршрута
     /// </summary>
-    private void ExtractRouteFields(Route route, List<string> cellTexts)
+    private async Task ParseBasicFieldsAsync(Route route, string nodeText, HtmlNode node)
     {
-        for (int i = 0; i < cellTexts.Count; i++)
+        // Название маршрута
+        var nameMatch = RouteNameRegex.Match(nodeText);
+        if (nameMatch.Success)
         {
-            var text = cellTexts[i].ToLower();
-            
-            // Серия и номер локомотива
-            if (text.Contains("серия") && i + 1 < cellTexts.Count)
+            route.Name = nameMatch.Groups[1].Value.Trim();
+        }
+        else
+        {
+            // Если не нашли явного названия, берем из первой ячейки или первых слов
+            var firstCell = node.SelectSingleNode(".//td[1]") ?? node.SelectSingleNode(".//span[1]");
+            route.Name = firstCell?.InnerText?.Trim() ?? "Неизвестный маршрут";
+        }
+
+        // Дата
+        var dateMatch = DateRegex.Match(nodeText);
+        if (dateMatch.Success)
+        {
+            if (DateTime.TryParse(dateMatch.Groups[1].Value, CultureInfo.CurrentCulture, DateTimeStyles.None, out var date))
             {
-                route.LocomotiveSeries = cellTexts[i + 1];
-            }
-            if (text.Contains("номер лок") && i + 1 < cellTexts.Count)
-            {
-                route.LocomotiveNumber = _textNormalizer.SafeInt(cellTexts[i + 1]);
-            }
-            
-            // Веса и нагрузки
-            if (text.Contains("нетто") && i + 1 < cellTexts.Count)
-            {
-                route.NettoTons = _textNormalizer.SafeDecimal(cellTexts[i + 1]);
-            }
-            if (text.Contains("брутто") && i + 1 < cellTexts.Count)
-            {
-                route.BruttoTons = _textNormalizer.SafeDecimal(cellTexts[i + 1]);
-            }
-            if (text.Contains("оси") && i + 1 < cellTexts.Count)
-            {
-                route.AxesCount = _textNormalizer.SafeInt(cellTexts[i + 1]);
-            }
-            
-            // Участок и норма
-            if (text.Contains("участок") && i + 1 < cellTexts.Count)
-            {
-                route.SectionName = cellTexts[i + 1];
-            }
-            if (text.Contains("номер нормы") && i + 1 < cellTexts.Count)
-            {
-                route.NormNumber = cellTexts[i + 1];
-            }
-            
-            // Расходы
-            if (text.Contains("расход факт") && i + 1 < cellTexts.Count)
-            {
-                route.FactConsumption = _textNormalizer.SafeDecimal(cellTexts[i + 1]);
-            }
-            if (text.Contains("расход по норме") && i + 1 < cellTexts.Count)
-            {
-                route.NormConsumption = _textNormalizer.SafeDecimal(cellTexts[i + 1]);
-            }
-            
-            // Километраж и работа
-            if (text.Contains("км") && i + 1 < cellTexts.Count && !text.Contains("ткм"))
-            {
-                route.Kilometers = _textNormalizer.SafeDecimal(cellTexts[i + 1]);
-            }
-            if (text.Contains("ткм") && i + 1 < cellTexts.Count)
-            {
-                route.TonKilometers = _textNormalizer.SafeDecimal(cellTexts[i + 1]);
+                route.Date = date;
+                route.TripDate = date;
             }
         }
-        
-        // Вычисляем производные поля (как в Python)
-        CalculateDerivedFields(route);
+        else
+        {
+            route.Date = DateTime.UtcNow;
+            route.TripDate = DateTime.UtcNow;
+        }
+
+        await Task.CompletedTask;
     }
 
     /// <summary>
-    /// Вычисляет производные поля маршрута
-    /// Аналог вычислений в Python parse_html_route
+    /// Парсит информацию о локомотиве
     /// </summary>
-    private void CalculateDerivedFields(Route route)
+    private void ParseLocomotiveInfo(Route route, string nodeText)
     {
-        // Нагрузка на ось
-        if (route.BruttoTons.HasValue && route.AxesCount.HasValue && route.AxesCount > 0)
+        var locoMatch = LocomotiveRegex.Match(nodeText);
+        if (locoMatch.Success)
         {
-            route.AxleLoad = route.BruttoTons.Value / route.AxesCount.Value;
-        }
-        
-        // Удельный расход
-        if (route.FactConsumption.HasValue && route.TonKilometers.HasValue && route.TonKilometers > 0)
-        {
-            route.FactUd = route.FactConsumption.Value / route.TonKilometers.Value * 10000;
-        }
-        
-        // Отклонение в процентах
-        if (route.FactConsumption.HasValue && route.NormConsumption.HasValue && route.NormConsumption > 0)
-        {
-            var deviation = (route.FactConsumption.Value - route.NormConsumption.Value) / route.NormConsumption.Value * 100;
-            route.DeviationPercent = Math.Round(deviation, 2);
-            
-            // Определяем статус отклонения (как в Python StatusClassifier)
-            route.Status = DeviationStatus.GetStatus(deviation);
+            route.LocomotiveSeries = locoMatch.Groups[1].Value.Trim();
+
+            if (int.TryParse(locoMatch.Groups[2].Value, out var number))
+            {
+                route.LocomotiveNumber = number;
+            }
         }
     }
 
     /// <summary>
-    /// Обрабатывает дубликаты маршрутов
-    /// Соответствует логике группировки в Python по route_key
+    /// Парсит числовые значения маршрута
     /// </summary>
-    private async Task<List<Route>> ProcessDuplicatesAsync(List<Route> routes)
+    private void ParseNumericValues(Route route, string nodeText, HtmlNode node)
     {
-        _logger.LogDebug("Обрабатываем дубликаты маршрутов");
-        
-        var groupedRoutes = routes
-            .Where(r => !string.IsNullOrEmpty(r.RouteKey))
-            .GroupBy(r => r.RouteKey)
-            .ToList();
-
-        var processedRoutes = new List<Route>();
-        var duplicateCount = 0;
-
-        foreach (var group in groupedRoutes)
+        // Расстояние
+        var distanceMatch = DistanceRegex.Match(nodeText);
+        if (distanceMatch.Success)
         {
-            var routeGroup = group.ToList();
-            
-            if (routeGroup.Count > 1)
+            var distanceStr = distanceMatch.Groups[1].Value.Replace(",", ".");
+            if (decimal.TryParse(distanceStr, NumberStyles.Float, CultureInfo.InvariantCulture, out var distance))
             {
-                duplicateCount += routeGroup.Count - 1;
-                _logger.LogTrace("Найдены дубликаты для маршрута {RouteKey}: {Count} версий", 
-                    group.Key, routeGroup.Count);
-                
-                // Выбираем лучший маршрут из группы (аналог select_best_route из Python)
-                var bestRoute = SelectBestRoute(routeGroup);
-                if (bestRoute != null)
+                route.Distance = distance;
+            }
+        }
+
+        // Масса состава
+        var massMatch = MassRegex.Match(nodeText);
+        if (massMatch.Success)
+        {
+            var massStr = massMatch.Groups[1].Value.Replace(",", ".");
+            if (decimal.TryParse(massStr, NumberStyles.Float, CultureInfo.InvariantCulture, out var mass))
+            {
+                route.TrainMass = mass;
+                route.TrainWeight = mass;
+                route.BruttoTons = mass;
+            }
+        }
+
+        // Расход электроэнергии
+        var consumptionMatch = ConsumptionRegex.Match(nodeText);
+        if (consumptionMatch.Success)
+        {
+            var consumptionStr = consumptionMatch.Groups[1].Value.Replace(",", ".");
+            if (decimal.TryParse(consumptionStr, NumberStyles.Float, CultureInfo.InvariantCulture, out var consumption))
+            {
+                route.ElectricConsumption = consumption;
+                route.ActualConsumption = consumption;
+                route.FactConsumption = consumption;
+            }
+        }
+
+        // Если не нашли базовые значения, попробуем найти их в ячейках таблицы
+        FillMissingValuesFromCells(route, node);
+    }
+
+    /// <summary>
+    /// Заполняет отсутствующие значения из ячеек таблицы
+    /// </summary>
+    private void FillMissingValuesFromCells(Route route, HtmlNode node)
+    {
+        var cells = node.SelectNodes(".//td");
+        if (cells == null) return;
+
+        for (int i = 0; i < cells.Count; i++)
+        {
+            var cellText = _textNormalizer.CleanText(cells[i].InnerText);
+
+            if (decimal.TryParse(cellText.Replace(",", "."), NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+            {
+                // Эвристика для определения типа значения по позиции и величине
+                if (route.Distance == 0 && value > 0 && value < 1000) // Расстояние обычно до 1000 км
                 {
-                    bestRoute.DuplicatesCount = (routeGroup.Count - 1).ToString();
-                    processedRoutes.Add(bestRoute);
+                    route.Distance = value;
                 }
+                else if (route.TrainMass == 0 && value > 100 && value < 10000) // Масса обычно от 100 до 10000 т
+                {
+                    route.TrainMass = value;
+                    route.TrainWeight = value;
+                }
+                else if (!route.ElectricConsumption.HasValue && value > 1 && value < 5000) // Расход обычно от 1 до 5000 кВт*ч
+                {
+                    route.ElectricConsumption = value;
+                    route.ActualConsumption = value;
+                }
+            }
+        }
+
+        // Устанавливаем нагрузку на ось как производную от массы состава
+        if (route.AxleLoad == 0 && route.TrainMass > 0)
+        {
+            // Примерная формула: нагрузка на ось = масса состава / количество осей (примерно 4-6 осей на вагон)
+            route.AxleLoad = Math.Min(25m, route.TrainMass / 50); // Ограничиваем 25 тоннами на ось
+        }
+    }
+
+    /// <summary>
+    /// Парсит участки маршрута
+    /// </summary>
+    private void ParseRouteSections(Route route, string nodeText, HtmlNode node)
+    {
+        var sectionsNode = node.SelectSingleNode(".//td[@class='sections']") ??
+                          node.SelectSingleNode(".//span[@class='sections']");
+
+        if (sectionsNode != null)
+        {
+            var sectionsText = _textNormalizer.CleanText(sectionsNode.InnerText);
+            var sections = sectionsText.Split(new[] { ',', ';', '-' }, StringSplitOptions.RemoveEmptyEntries)
+                                     .Select(s => s.Trim())
+                                     .Where(s => !string.IsNullOrEmpty(s))
+                                     .ToList();
+
+            route.SectionNames = sections;
+        }
+
+        // Если не нашли специальный узел, попробуем найти участки в общем тексте
+        if (route.SectionNames.Count == 0)
+        {
+            var possibleSections = ExtractSectionNamesFromText(nodeText);
+            route.SectionNames = possibleSections;
+        }
+    }
+
+    /// <summary>
+    /// Извлекает названия участков из текста
+    /// </summary>
+    private List<string> ExtractSectionNamesFromText(string text)
+    {
+        var sections = new List<string>();
+
+        // Паттерны для поиска станций/участков
+        var stationPatterns = new[]
+        {
+            @"ст\.\s*([А-Я][а-яё\-\s]+)",
+            @"([А-Я][а-яё\-\s]+)\s*-\s*([А-Я][а-яё\-\s]+)",
+            @"участок\s+([А-Я][а-яё\-\s]+)",
+            @"от\s+([А-Я][а-яё\-\s]+)\s+до\s+([А-Я][а-яё\-\s]+)"
+        };
+
+        foreach (var pattern in stationPatterns)
+        {
+            var matches = Regex.Matches(text, pattern, RegexOptions.IgnoreCase);
+            foreach (Match match in matches)
+            {
+                for (int i = 1; i < match.Groups.Count; i++)
+                {
+                    var section = match.Groups[i].Value.Trim();
+                    if (!string.IsNullOrEmpty(section) && section.Length > 2)
+                    {
+                        sections.Add(section);
+                    }
+                }
+            }
+        }
+
+        return sections.Distinct().Take(5).ToList(); // Ограничиваем 5 участками
+    }
+
+    /// <summary>
+    /// Парсит неструктурированный текст
+    /// </summary>
+    private async Task<List<Route>> ParseUnstructuredTextAsync(string htmlContent, string fileName, CancellationToken cancellationToken)
+    {
+        var routes = new List<Route>();
+
+        // Удаляем HTML теги и получаем чистый текст
+        var plainText = Regex.Replace(htmlContent, "<[^>]+>", " ");
+        plainText = _textNormalizer.CleanText(plainText);
+
+        // Разбиваем на потенциальные маршруты по ключевым словам
+        var routeBlocks = Regex.Split(plainText, @"(?=маршрут|рейс|поездка)", RegexOptions.IgnoreCase)
+                              .Where(block => block.Length > 50) // Фильтруем слишком короткие блоки
+                              .Take(100) // Ограничиваем количество для производительности
+                              .ToList();
+
+        foreach (var block in routeBlocks)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                var route = await CreateRouteFromTextBlock(block, fileName);
+                if (route != null && route.IsValid)
+                {
+                    routes.Add(route);
+                    _statistics.IncrementSuccess();
+                }
+                else
+                {
+                    _statistics.IncrementSkipped();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Ошибка при парсинге блока текста");
+                _statistics.IncrementError();
+            }
+        }
+
+        return routes;
+    }
+
+    /// <summary>
+    /// Создает маршрут из текстового блока
+    /// </summary>
+    private async Task<Route?> CreateRouteFromTextBlock(string textBlock, string fileName)
+    {
+        try
+        {
+            var route = Route.Create(ExtractRouteName(textBlock), 0, 0, 0);
+            route.DataSource = fileName;
+
+            // Парсим базовые поля из текстового блока
+            await ParseBasicFieldsAsync(route, textBlock, new HtmlTextNode(null!, textBlock, 0));
+            ParseLocomotiveInfo(route, textBlock);
+            ParseNumericValues(route, textBlock, new HtmlTextNode(null!, textBlock, 0));
+
+            // Извлекаем участки из текста
+            route.SectionNames = ExtractSectionNamesFromText(textBlock);
+
+            return route.IsValid ? route : null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ошибка при создании маршрута из текстового блока");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Извлекает название маршрута из текстового блока
+    /// </summary>
+    private string ExtractRouteName(string textBlock)
+    {
+        // Попытка найти название после ключевых слов
+        var patterns = new[]
+        {
+            @"маршрут\s*:?\s*([^\n\r]{10,100})",
+            @"рейс\s*:?\s*([^\n\r]{10,100})",
+            @"поездка\s*:?\s*([^\n\r]{10,100})",
+            @"направление\s*:?\s*([^\n\r]{10,100})"
+        };
+
+        foreach (var pattern in patterns)
+        {
+            var match = Regex.Match(textBlock, pattern, RegexOptions.IgnoreCase);
+            if (match.Success)
+            {
+                return match.Groups[1].Value.Trim();
+            }
+        }
+
+        // Если не нашли, берем первые слова блока
+        var firstLine = textBlock.Split('\n')[0].Trim();
+        return firstLine.Length > 100 ? firstLine.Substring(0, 100) + "..." : firstLine;
+    }
+
+    /// <summary>
+    /// Удаляет дубликаты маршрутов
+    /// </summary>
+    private async Task<List<Route>> RemoveDuplicatesAsync(List<Route> routes, CancellationToken cancellationToken)
+    {
+        var uniqueRoutes = new Dictionary<string, Route>();
+
+        foreach (var route in routes)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var key = $"{route.RouteNumber}_{route.Date:yyyyMMdd}_{route.LocomotiveSeries}_{route.LocomotiveNumber}";
+
+            if (!uniqueRoutes.ContainsKey(key))
+            {
+                uniqueRoutes[key] = route;
             }
             else
             {
-                processedRoutes.Add(routeGroup.First());
+                // Если есть дубликат, выбираем более полный по данным
+                var existing = uniqueRoutes[key];
+                if (IsMoreComplete(route, existing))
+                {
+                    uniqueRoutes[key] = route;
+                }
+                _statistics.DuplicateRoutes++;
             }
         }
 
-        _stats.DuplicateRoutes = duplicateCount;
-        _logger.LogDebug("Обработка дубликатов завершена: {DuplicateCount} дубликатов, {UniqueCount} уникальных маршрутов", 
-            duplicateCount, processedRoutes.Count);
-
-        return processedRoutes;
+        return await Task.FromResult(uniqueRoutes.Values.ToList());
     }
 
     /// <summary>
-    /// Выбирает лучший маршрут из группы дубликатов
-    /// Соответствует select_best_route из Python
+    /// Определяет какой маршрут более полный по данным
     /// </summary>
-    private Route? SelectBestRoute(List<Route> routes)
+    private bool IsMoreComplete(Route newRoute, Route existingRoute)
     {
-        if (!routes.Any()) return null;
-        if (routes.Count == 1) return routes.First();
-
-        // Приоритеты выбора (как в Python):
-        // 1. Маршрут с наиболее полными данными
-        // 2. Маршрут с корректными расчетами
-        // 3. Самый свежий маршрут
-        
-        return routes
-            .OrderByDescending(r => GetRouteCompleteness(r))  // Полнота данных
-            .ThenByDescending(r => r.CreatedAt)               // Свежесть
-            .FirstOrDefault();
+        var newScore = GetCompletenessScore(newRoute);
+        var existingScore = GetCompletenessScore(existingRoute);
+        return newScore > existingScore;
     }
 
     /// <summary>
-    /// Вычисляет полноту данных маршрута для выбора лучшего
+    /// Вычисляет оценку полноты данных маршрута
     /// </summary>
-    private int GetRouteCompleteness(Route route)
+    private int GetCompletenessScore(Route route)
     {
         var score = 0;
-        
+
+        if (!string.IsNullOrEmpty(route.RouteNumber)) score++;
         if (!string.IsNullOrEmpty(route.LocomotiveSeries)) score++;
-        if (route.LocomotiveNumber.HasValue && route.LocomotiveNumber > 0) score++;
-        if (route.NettoTons.HasValue && route.NettoTons > 0) score++;
-        if (route.BruttoTons.HasValue && route.BruttoTons > 0) score++;
-        if (!string.IsNullOrEmpty(route.SectionName)) score++;
-        if (!string.IsNullOrEmpty(route.NormNumber)) score++;
-        if (route.FactConsumption.HasValue && route.FactConsumption > 0) score++;
-        if (route.NormConsumption.HasValue && route.NormConsumption > 0) score++;
-        if (route.DeviationPercent.HasValue) score++;
-        
+        if (route.LocomotiveNumber.HasValue) score++;
+        if (route.Distance > 0) score++;
+        if (route.TrainMass > 0) score++;
+        if (route.AxleLoad > 0) score++;
+        if (route.ElectricConsumption.HasValue || route.ActualConsumption.HasValue) score++;
+        if (route.MechanicalWork.HasValue) score++;
+        if (route.TravelTime != default(TimeSpan)) score++;
+
         return score;
     }
 
-    public ProcessingStatistics GetProcessingStatistics()
-    {
-        return _stats;
-    }
+    #endregion
 }
 
 /// <summary>
-/// Метаданные маршрута для промежуточного хранения
+/// Простая обертка для текстовых узлов HtmlAgilityPack
 /// </summary>
-public record RouteMetadata
+internal class HtmlTextNode : HtmlNode
 {
-    public string? Number { get; set; }
-    public string? RouteDate { get; set; }
-    public string? TripDate { get; set; }
-    public string? DriverTab { get; set; }
-    public string? Identifier { get; set; }
+    public HtmlTextNode(HtmlDocument doc, string text, int position) : base(HtmlNodeType.Text, doc, position)
+    {
+        InnerHtml = text;
+    }
 }

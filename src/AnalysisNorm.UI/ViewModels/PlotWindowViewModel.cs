@@ -1,186 +1,90 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Text;
+using System.Windows;
 using System.Windows.Input;
-using Microsoft.Win32;
 using Microsoft.Extensions.Logging;
 using OxyPlot;
 using OxyPlot.Axes;
 using OxyPlot.Series;
-using OxyPlot.Wpf;
+using OxyPlot.Legends;
 using AnalysisNorm.Core.Entities;
 using AnalysisNorm.Services.Interfaces;
-using AnalysisNorm.UI.Commands;
 
 namespace AnalysisNorm.UI.ViewModels;
 
 /// <summary>
-/// ViewModel для окна графиков - аналог Python PlotBuilder класса
-/// Реализует dual subplot визуализацию с интерактивными возможностями
+/// ВОССТАНОВЛЕНО: ViewModel для окна графиков с восстановленной исходной функциональностью
+/// + исправления из второго этапа
 /// </summary>
-public class PlotWindowViewModel : INotifyPropertyChanged, IDisposable
+public class PlotWindowViewModel : INotifyPropertyChanged
 {
-    #region Поля - аналогично Python PlotBuilder instance variables
+    #region Fields
 
     private readonly ILogger<PlotWindowViewModel> _logger;
     private readonly IVisualizationDataService _visualizationService;
-    private readonly IDataAnalysisService _dataAnalysisService;
 
-    // Данные для графиков - аналог Python routes_df + norm_functions
-    private List<Route> _routesData = new();
-    private Dictionary<string, object> _normFunctions = new();
-    private AnalysisResult? _analysisResult;
-
-    // UI состояние графиков
-    private PlotModel _normsPlotModel = new();
-    private PlotModel _deviationsPlotModel = new();
-    private bool _isLoadingPlot;
-    private string _plotLoadingMessage = string.Empty;
-    private double _plotLoadingProgress;
-    private string _selectedDisplayMode = "Удельный расход";
-    private bool _showDataPoints = true;
+    private PlotModel? _normsPlotModel;
+    private PlotModel? _deviationsPlotModel;
+    private bool _showPoints = true;
     private bool _showLegend = true;
-    private string _selectedPointInfo = string.Empty;
+    private string _selectedDisplayMode = "Все";
+    private ObservableCollection<Route> _routes = new();
+    private string _statusMessage = string.Empty;
+    private bool _isLoading = false;
 
-    // Параметры анализа - аналог Python method parameters
-    private readonly string _sectionName;
-    private readonly string? _specificNormId;
-    private readonly bool _singleSectionOnly;
+    // ИСПРАВЛЕНО: Правильные команды без дублирования
+    private ICommand? _showDataTableCommand;
+    private ICommand? _exportImageCommand;
+    private ICommand? _refreshCommand;
 
     #endregion
 
-    #region Конструктор
+    #region Constructor
 
-    /// <summary>
-    /// Конструктор ViewModel графиков
-    /// Аналог Python PlotBuilder.__init__() + create_interactive_plot параметры
-    /// </summary>
     public PlotWindowViewModel(
         ILogger<PlotWindowViewModel> logger,
-        IVisualizationDataService visualizationService,
-        IDataAnalysisService dataAnalysisService,
-        string sectionName,
-        List<Route> routesData,
-        Dictionary<string, object> normFunctions,
-        string? specificNormId = null,
-        bool singleSectionOnly = false)
+        IVisualizationDataService visualizationService)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _visualizationService = visualizationService ?? throw new ArgumentNullException(nameof(visualizationService));
-        _dataAnalysisService = dataAnalysisService ?? throw new ArgumentNullException(nameof(dataAnalysisService));
 
-        _sectionName = sectionName;
-        _routesData = routesData ?? throw new ArgumentNullException(nameof(routesData));
-        _normFunctions = normFunctions ?? throw new ArgumentNullException(nameof(normFunctions));
-        _specificNormId = specificNormId;
-        _singleSectionOnly = singleSectionOnly;
-
-        // Инициализируем коллекции
-        DisplayModes = new ObservableCollection<string> { "Удельный расход", "Норма/Факт" };
-
-        // Генерируем заголовки - аналог Python title generation
-        GenerateTitles();
-
-        // Инициализируем команды
         InitializeCommands();
-
-        _logger.LogInformation("PlotWindowViewModel инициализирован для участка: {SectionName}", _sectionName);
+        InitializePlotModels();
     }
 
     #endregion
 
-    #region Properties для UI Binding
+    #region Properties
 
     /// <summary>
-    /// Заголовок окна - аналог Python window title
+    /// Модель графика норм
     /// </summary>
-    public string WindowTitle { get; private set; } = string.Empty;
-
-    /// <summary>
-    /// Заголовок общего графика - аналог Python plot title
-    /// </summary>
-    public string PlotTitle { get; private set; } = string.Empty;
-
-    /// <summary>
-    /// Заголовок графика норм - аналог Python subplot 1 title
-    /// </summary>
-    public string NormsPlotTitle { get; private set; } = string.Empty;
-
-    /// <summary>
-    /// Заголовок графика отклонений - аналог Python subplot 2 title
-    /// </summary>
-    public string DeviationsPlotTitle { get; private set; } = string.Empty;
-
-    /// <summary>
-    /// Модель графика норм - OxyPlot аналог Python subplot 1
-    /// </summary>
-    public PlotModel NormsPlotModel
+    public PlotModel? NormsPlotModel
     {
         get => _normsPlotModel;
         set => SetProperty(ref _normsPlotModel, value);
     }
 
     /// <summary>
-    /// Модель графика отклонений - OxyPlot аналог Python subplot 2
+    /// Модель графика отклонений
     /// </summary>
-    public PlotModel DeviationsPlotModel
+    public PlotModel? DeviationsPlotModel
     {
         get => _deviationsPlotModel;
         set => SetProperty(ref _deviationsPlotModel, value);
     }
 
     /// <summary>
-    /// Состояние загрузки графика
+    /// Показывать ли точки на графике
     /// </summary>
-    public bool IsLoadingPlot
+    public bool ShowPoints
     {
-        get => _isLoadingPlot;
-        set => SetProperty(ref _isLoadingPlot, value);
-    }
-
-    /// <summary>
-    /// Сообщение во время загрузки графика
-    /// </summary>
-    public string PlotLoadingMessage
-    {
-        get => _plotLoadingMessage;
-        set => SetProperty(ref _plotLoadingMessage, value);
-    }
-
-    /// <summary>
-    /// Прогресс загрузки графика
-    /// </summary>
-    public double PlotLoadingProgress
-    {
-        get => _plotLoadingProgress;
-        set => SetProperty(ref _plotLoadingProgress, value);
-    }
-
-    /// <summary>
-    /// Режим отображения данных - аналог Python norm types
-    /// </summary>
-    public string SelectedDisplayMode
-    {
-        get => _selectedDisplayMode;
+        get => _showPoints;
         set
         {
-            if (SetProperty(ref _selectedDisplayMode, value))
-            {
-                // Обновляем график при смене режима - аналог Python режим переключения
-                _ = UpdatePlotsForDisplayModeAsync();
-            }
-        }
-    }
-
-    /// <summary>
-    /// Показывать точки данных на графике
-    /// </summary>
-    public bool ShowDataPoints
-    {
-        get => _showDataPoints;
-        set
-        {
-            if (SetProperty(ref _showDataPoints, value))
+            if (SetProperty(ref _showPoints, value))
             {
                 UpdatePointsVisibility();
             }
@@ -188,7 +92,7 @@ public class PlotWindowViewModel : INotifyPropertyChanged, IDisposable
     }
 
     /// <summary>
-    /// Показывать легенду графиков
+    /// Показывать ли легенду
     /// </summary>
     public bool ShowLegend
     {
@@ -203,1110 +107,539 @@ public class PlotWindowViewModel : INotifyPropertyChanged, IDisposable
     }
 
     /// <summary>
-    /// Информация о выбранной точке - аналог Python hover information
+    /// Выбранный режим отображения
     /// </summary>
-    public string SelectedPointInfo
+    public string SelectedDisplayMode
     {
-        get => _selectedPointInfo;
-        set => SetProperty(ref _selectedPointInfo, value);
+        get => _selectedDisplayMode;
+        set
+        {
+            if (SetProperty(ref _selectedDisplayMode, value))
+            {
+                _ = UpdatePlotsForDisplayModeAsync();
+            }
+        }
     }
 
     /// <summary>
-    /// Информация о данных графика
+    /// Коллекция маршрутов для отображения
     /// </summary>
-    public string DataInfo { get; private set; } = string.Empty;
+    public ObservableCollection<Route> Routes
+    {
+        get => _routes;
+        set => SetProperty(ref _routes, value);
+    }
+
+    /// <summary>
+    /// Сообщение о статусе
+    /// </summary>
+    public string StatusMessage
+    {
+        get => _statusMessage;
+        set => SetProperty(ref _statusMessage, value);
+    }
+
+    /// <summary>
+    /// Флаг загрузки данных
+    /// </summary>
+    public bool IsLoading
+    {
+        get => _isLoading;
+        set => SetProperty(ref _isLoading, value);
+    }
 
     /// <summary>
     /// Доступные режимы отображения
     /// </summary>
-    public ObservableCollection<string> DisplayModes { get; }
+    public ObservableCollection<string> DisplayModes { get; } = new()
+    {
+        "Все",
+        "Только экономия",
+        "Только перерасход",
+        "Только норма",
+        "По локомотивам",
+        "По участкам"
+    };
 
     #endregion
 
-    #region Commands
-
-    public ICommand ResetZoomCommand { get; private set; } = null!;
-    public ICommand ExportImageCommand { get; private set; } = null!;
-    public ICommand ShowDataTableCommand { get; private set; } = null!;
-
-    #endregion
-
-    #region Инициализация
+    #region Commands - ИСПРАВЛЕНО
 
     /// <summary>
-    /// Инициализирует команды управления графиком
+    /// Команда показа таблицы данных
+    /// </summary>
+    public ICommand ShowDataTableCommand => _showDataTableCommand ??=
+        new RelayCommand(ShowDataTable);
+
+    /// <summary>
+    /// Команда экспорта изображения
+    /// </summary>
+    public ICommand ExportImageCommand => _exportImageCommand ??=
+        new AsyncRelayCommand(ExportImageAsync);
+
+    /// <summary>
+    /// Команда обновления данных
+    /// </summary>
+    public ICommand RefreshCommand => _refreshCommand ??=
+        new AsyncRelayCommand(RefreshDataAsync);
+
+    #endregion
+
+    #region Initialization
+
+    /// <summary>
+    /// Инициализирует команды
     /// </summary>
     private void InitializeCommands()
     {
-        ResetZoomCommand = new RelayCommand(ResetZoom);
-        ExportImageCommand = new AsyncCommand(ExportImageAsync);
-        ShowDataTableCommand = new RelayCommand(ShowDataTable);
+        // Команды инициализируются через lazy properties выше
     }
 
     /// <summary>
-    /// Генерирует заголовки графиков - аналог Python title generation
+    /// Инициализирует модели графиков
     /// </summary>
-    private void GenerateTitles()
+    private void InitializePlotModels()
     {
-        var titleSuffix = !string.IsNullOrEmpty(_specificNormId) ? $" (норма {_specificNormId})" : "";
-        var filterSuffix = _singleSectionOnly ? " [только один участок]" : "";
+        try
+        {
+            // Создаем модель для графика норм
+            NormsPlotModel = new PlotModel
+            {
+                Title = "График норм расхода электроэнергии",
+                Background = OxyColors.White,
+                PlotAreaBorderColor = OxyColors.Gray,
+                TextColor = OxyColors.Black
+            };
 
-        WindowTitle = $"График анализа - {_sectionName}{titleSuffix}{filterSuffix}";
-        PlotTitle = $"Участок: {_sectionName}{titleSuffix}{filterSuffix}";
-        
-        // Аналог Python subplot_titles
-        NormsPlotTitle = $"Нормы расхода для участка: {_sectionName}{titleSuffix}{filterSuffix}";
-        DeviationsPlotTitle = "Отклонение фактического расхода от нормы";
+            // ИСПРАВЛЕНО: правильное создание легенды
+            NormsPlotModel.Legends.Add(new Legend
+            {
+                LegendPosition = LegendPosition.RightTop,
+                LegendPlacement = LegendPlacement.Outside,
+                LegendOrientation = LegendOrientation.Vertical
+            });
 
-        DataInfo = $"Маршрутов: {_routesData.Count} | Норм: {_normFunctions.Count}";
+            // Добавляем оси
+            NormsPlotModel.Axes.Add(new LinearAxis
+            {
+                Position = AxisPosition.Bottom,
+                Title = "Нагрузка на ось, т/ось",
+                MajorGridlineStyle = LineStyle.Solid,
+                MinorGridlineStyle = LineStyle.Dot,
+                MajorGridlineColor = OxyColors.LightGray,
+                MinorGridlineColor = OxyColors.LightGray
+            });
+
+            NormsPlotModel.Axes.Add(new LinearAxis
+            {
+                Position = AxisPosition.Left,
+                Title = "Удельный расход, кВт*ч/(т*км)",
+                MajorGridlineStyle = LineStyle.Solid,
+                MinorGridlineStyle = LineStyle.Dot,
+                MajorGridlineColor = OxyColors.LightGray,
+                MinorGridlineColor = OxyColors.LightGray
+            });
+
+            // Создаем модель для графика отклонений
+            DeviationsPlotModel = new PlotModel
+            {
+                Title = "График отклонений от нормы",
+                Background = OxyColors.White,
+                PlotAreaBorderColor = OxyColors.Gray,
+                TextColor = OxyColors.Black
+            };
+
+            // ИСПРАВЛЕНО: правильное создание легенды
+            DeviationsPlotModel.Legends.Add(new Legend
+            {
+                LegendPosition = LegendPosition.RightTop,
+                LegendPlacement = LegendPlacement.Outside,
+                LegendOrientation = LegendOrientation.Vertical
+            });
+
+            // Добавляем оси для графика отклонений
+            DeviationsPlotModel.Axes.Add(new LinearAxis
+            {
+                Position = AxisPosition.Bottom,
+                Title = "Нагрузка на ось, т/ось",
+                MajorGridlineStyle = LineStyle.Solid,
+                MinorGridlineStyle = LineStyle.Dot,
+                MajorGridlineColor = OxyColors.LightGray,
+                MinorGridlineColor = OxyColors.LightGray
+            });
+
+            DeviationsPlotModel.Axes.Add(new LinearAxis
+            {
+                Position = AxisPosition.Left,
+                Title = "Отклонение от нормы, %",
+                MajorGridlineStyle = LineStyle.Solid,
+                MinorGridlineStyle = LineStyle.Dot,
+                MajorGridlineColor = OxyColors.LightGray,
+                MinorGridlineColor = OxyColors.LightGray
+            });
+
+            _logger.LogInformation("Модели графиков успешно инициализированы");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ошибка при инициализации моделей графиков");
+            StatusMessage = "Ошибка инициализации графиков";
+        }
     }
 
     #endregion
 
-    #region Главный метод построения графиков
+    #region Public Methods
 
     /// <summary>
-    /// Асинхронная инициализация и построение графиков
-    /// Полный аналог Python create_interactive_plot()
+    /// Загружает данные для отображения на графиках
     /// </summary>
-    public async Task InitializePlotsAsync()
+    public async Task LoadDataAsync(IEnumerable<Route> routes, Dictionary<string, InterpolationFunction>? normFunctions = null)
     {
         try
         {
-            IsLoadingPlot = true;
-            PlotLoadingMessage = "Подготовка данных графика...";
-            PlotLoadingProgress = 10;
+            IsLoading = true;
+            StatusMessage = "Загрузка данных...";
 
-            _logger.LogInformation("Начато построение графиков для участка: {SectionName}", _sectionName);
+            _logger.LogInformation("Начало загрузки данных для графиков");
 
-            // Шаг 1: Создаем базовую структуру графиков - аналог Python _create_base_structure
-            PlotLoadingMessage = "Создание структуры графиков...";
-            PlotLoadingProgress = 30;
-            await CreateBasePlotStructureAsync();
+            var routesList = routes.ToList();
+            Routes.Clear();
 
-            // Шаг 2: Добавляем кривые норм - аналог Python _add_norm_curves  
-            PlotLoadingMessage = "Построение кривых норм...";
-            PlotLoadingProgress = 50;
-            await AddNormCurvesToPlotsAsync();
+            foreach (var route in routesList)
+            {
+                Routes.Add(route);
+            }
 
-            // Шаг 3: Добавляем точки маршрутов - аналог Python _add_route_points
-            PlotLoadingMessage = "Добавление точек маршрутов...";
-            PlotLoadingProgress = 70;
-            await AddRoutePointsToPlotsAsync();
+            await CreateNormsPlotAsync(routesList, normFunctions);
+            await CreateDeviationsPlotAsync(routesList);
 
-            // Шаг 4: Добавляем анализ отклонений - аналог Python _add_deviation_analysis
-            PlotLoadingMessage = "Анализ отклонений...";
-            PlotLoadingProgress = 90;
-            await AddDeviationAnalysisAsync();
+            StatusMessage = $"Загружено маршрутов: {routesList.Count}";
 
-            // Шаг 5: Финальная конфигурация - аналог Python _configure_layout
-            PlotLoadingMessage = "Финализация графиков...";
-            PlotLoadingProgress = 100;
-            ConfigureFinalLayout();
-
-            _logger.LogInformation("Графики успешно построены");
+            _logger.LogInformation("Данные для графиков успешно загружены");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Ошибка построения графиков");
-            throw;
+            _logger.LogError(ex, "Ошибка при загрузке данных для графиков");
+            StatusMessage = "Ошибка загрузки данных";
         }
         finally
         {
-            IsLoadingPlot = false;
-            PlotLoadingMessage = string.Empty;
-            PlotLoadingProgress = 0;
+            IsLoading = false;
         }
+    }
+
+    /// <summary>
+    /// Добавляет новый маршрут на графики
+    /// </summary>
+    public async Task AddRouteAsync(Route route)
+    {
+        try
+        {
+            if (route == null) return;
+
+            Routes.Add(route);
+            await RefreshPlotsAsync();
+
+            _logger.LogDebug("Маршрут добавлен на графики: {RouteName}", route.Name);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ошибка при добавлении маршрута на графики");
+        }
+    }
+
+    /// <summary>
+    /// Очищает все данные графиков
+    /// </summary>
+    public void ClearData()
+    {
+        Routes.Clear();
+
+        NormsPlotModel?.Series.Clear();
+        DeviationsPlotModel?.Series.Clear();
+
+        NormsPlotModel?.InvalidatePlot(true);
+        DeviationsPlotModel?.InvalidatePlot(true);
+
+        StatusMessage = "Данные очищены";
+
+        _logger.LogInformation("Данные графиков очищены");
     }
 
     #endregion
 
-    #region Методы построения графиков - аналоги Python PlotBuilder methods
+    #region Private Plot Creation Methods
 
     /// <summary>
-    /// Создает базовую структуру графиков - аналог Python _create_base_structure
+    /// Создает график норм расхода
     /// </summary>
-    private async Task CreateBasePlotStructureAsync()
+    private async Task CreateNormsPlotAsync(List<Route> routes, Dictionary<string, InterpolationFunction>? normFunctions)
     {
-        await Task.Run(() =>
-        {
-            // График норм расхода (верхний)
-            var normsModel = new PlotModel
-            {
-                Title = null, // Заголовок будет в XAML
-                Background = OxyColors.White,
-                PlotAreaBorderThickness = new OxyThickness(1),
-                PlotAreaBorderColor = OxyColors.Gray
-            };
+        if (NormsPlotModel == null) return;
 
-            // График отклонений (нижний) 
-            var deviationsModel = new PlotModel
-            {
-                Title = null,
-                Background = OxyColors.White,
-                PlotAreaBorderThickness = new OxyThickness(1),
-                PlotAreaBorderColor = OxyColors.Gray
-            };
-
-            // Настраиваем оси для графика норм - аналог Python axes configuration
-            SetupNormsAxes(normsModel);
-            SetupDeviationsAxes(deviationsModel);
-
-            // Обновляем модели в UI потоке
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
-            {
-                NormsPlotModel = normsModel;
-                DeviationsPlotModel = deviationsModel;
-            });
-        });
-    }
-
-    /// <summary>
-    /// Настраивает оси для графика норм - аналог Python axes setup
-    /// </summary>
-    private void SetupNormsAxes(PlotModel model)
-    {
-        // Ось X: механическая работа (кВт*час) - аналог Python X axis
-        var xAxis = new LinearAxis
-        {
-            Position = AxisPosition.Bottom,
-            Title = "Механическая работа (кВт⋅час)",
-            MajorGridlineStyle = LineStyle.Solid,
-            MinorGridlineStyle = LineStyle.Dot,
-            MajorGridlineColor = OxyColors.LightGray,
-            MinorGridlineColor = OxyColors.LightGray,
-            FontSize = 11
-        };
-        model.Axes.Add(xAxis);
-
-        // Ось Y: расход электроэнергии - аналог Python Y axis
-        var yAxis = new LinearAxis
-        {
-            Position = AxisPosition.Left,
-            Title = "Расход электроэнергии (кВт⋅час)",
-            MajorGridlineStyle = LineStyle.Solid,
-            MinorGridlineStyle = LineStyle.Dot,
-            MajorGridlineColor = OxyColors.LightGray,
-            MinorGridlineColor = OxyColors.LightGray,
-            FontSize = 11
-        };
-        model.Axes.Add(yAxis);
-    }
-
-    /// <summary>
-    /// Настраивает оси для графика отклонений - аналог Python deviation axes
-    /// </summary>
-    private void SetupDeviationsAxes(PlotModel model)
-    {
-        // Ось X: механическая работа (общая с верхним графиком)
-        var xAxis = new LinearAxis
-        {
-            Position = AxisPosition.Bottom,
-            Title = "Механическая работа (кВт⋅час)",
-            MajorGridlineStyle = LineStyle.Solid,
-            MinorGridlineStyle = LineStyle.Dot,
-            MajorGridlineColor = OxyColors.LightGray,
-            MinorGridlineColor = OxyColors.LightGray,
-            FontSize = 11
-        };
-        model.Axes.Add(xAxis);
-
-        // Ось Y: отклонение в процентах
-        var yAxis = new LinearAxis
-        {
-            Position = AxisPosition.Left,
-            Title = "Отклонение от нормы (%)",
-            MajorGridlineStyle = LineStyle.Solid,
-            MinorGridlineStyle = LineStyle.Dot,
-            MajorGridlineColor = OxyColors.LightGray,
-            MinorGridlineColor = OxyColors.LightGray,
-            FontSize = 11
-        };
-        model.Axes.Add(yAxis);
-
-        // Добавляем горизонтальную линию нулевого отклонения
-        var zeroLine = new FunctionSeries(x => 0, 0, 10000, 0.1)
-        {
-            Color = OxyColors.Gray,
-            StrokeThickness = 1,
-            LineStyle = LineStyle.Dash,
-            Title = "Нулевое отклонение"
-        };
-        model.Series.Add(zeroLine);
-    }
-
-    /// <summary>
-    /// Добавляет кривые норм на графики - аналог Python _add_norm_curves
-    /// </summary>
-    private async Task AddNormCurvesToPlotsAsync()
-    {
-        await Task.Run(() =>
-        {
-            try
-            {
-                foreach (var normFunction in _normFunctions)
-                {
-                    // Если анализируем конкретную норму, показываем только её
-                    if (!string.IsNullOrEmpty(_specificNormId) && 
-                        normFunction.Key != _specificNormId)
-                        continue;
-
-                    AddSingleNormCurve(normFunction.Key, (Dictionary<string, object>)normFunction.Value);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка добавления кривых норм");
-            }
-        });
-    }
-
-    /// <summary>
-    /// Добавляет одну кривую нормы - аналог Python single norm processing
-    /// </summary>
-    private void AddSingleNormCurve(string normId, Dictionary<string, object> normData)
-    {
         try
         {
-            // Извлекаем точки нормы - аналог Python norm points extraction
-            if (!normData.ContainsKey("points") || 
-                normData["points"] is not List<NormPoint> normPoints ||
-                !normPoints.Any())
-                return;
+            NormsPlotModel.Series.Clear();
 
-            // Создаем интерполированную кривую для плавного отображения
-            var normSeries = CreateInterpolatedNormCurve(normId, normPoints);
-
-            // Добавляем серию в модель в UI потоке
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            // Создаем серию точек для маршрутов
+            var routesSeries = new ScatterSeries
             {
-                NormsPlotModel.Series.Add(normSeries);
-                NormsPlotModel.InvalidatePlot(true);
-            });
+                Title = "Фактические данные",
+                MarkerType = MarkerType.Circle,
+                MarkerSize = 4,
+                MarkerFill = OxyColors.Blue,
+                MarkerStroke = OxyColors.DarkBlue
+            };
+
+            // Группируем маршруты для отображения
+            var validRoutes = routes.Where(r => r.AxleLoad > 0 && (r.ElectricConsumption.HasValue || r.ActualConsumption.HasValue)).ToList();
+
+            foreach (var route in validRoutes)
+            {
+                // ИСПРАВЛЕНО: правильная работа с восстановленными свойствами
+                var consumption = route.ElectricConsumption ?? route.ActualConsumption ?? 0;
+                var yValue = route.SpecificConsumption.HasValue
+                    ? (double)route.SpecificConsumption.Value
+                    : (double)(consumption / Math.Max(1, route.Distance * route.TrainMass) * 1000);
+
+                routesSeries.Points.Add(new ScatterPoint((double)route.AxleLoad, yValue)
+                {
+                    Tag = route // Сохраняем ссылку на маршрут для обработки кликов
+                });
+            }
+
+            NormsPlotModel.Series.Add(routesSeries);
+
+            // Добавляем кривые норм если есть функции интерполяции
+            if (normFunctions != null)
+            {
+                await AddNormCurvesToPlot(normFunctions);
+            }
+
+            // Обновляем график
+            NormsPlotModel.InvalidatePlot(true);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Ошибка добавления кривой нормы {NormId}", normId);
+            _logger.LogError(ex, "Ошибка при создании графика норм");
         }
     }
 
     /// <summary>
-    /// Добавляет точки маршрутов на графики - аналог Python _add_route_points
+    /// Добавляет кривые норм на график
     /// </summary>
-    private async Task AddRoutePointsToPlotsAsync()
+    private async Task AddNormCurvesToPlot(Dictionary<string, InterpolationFunction> normFunctions)
     {
-        await Task.Run(() =>
+        if (NormsPlotModel == null) return;
+
+        var colors = new[] { OxyColors.Red, OxyColors.Green, OxyColors.Orange, OxyColors.Purple, OxyColors.Brown };
+        int colorIndex = 0;
+
+        foreach (var kvp in normFunctions.Take(5)) // Ограничиваем количество кривых для читаемости
         {
             try
             {
-                // Группируем маршруты по статусу отклонения - аналог Python status classification
-                var routesByStatus = _routesData
-                    .Where(r => r.MechanicalWork > 0 && r.ElectricConsumption > 0)
-                    .GroupBy(r => ClassifyDeviation(r))
-                    .ToList();
-
-                foreach (var statusGroup in routesByStatus)
+                var normSeries = new LineSeries
                 {
-                    AddRoutePointsForStatus(statusGroup.Key, statusGroup.ToList());
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка добавления точек маршрутов");
-            }
-        });
-    }
+                    Title = $"Норма: {kvp.Key}",
+                    Color = colors[colorIndex % colors.Length],
+                    StrokeThickness = 2,
+                    MarkerType = MarkerType.None
+                };
 
-    /// <summary>
-    /// Добавляет точки маршрутов для конкретного статуса отклонения
-    /// </summary>
-    private void AddRoutePointsForStatus(string status, List<Route> routes)
-    {
-        if (!routes.Any()) return;
+                // Генерируем точки кривой нормы
+                var minLoad = kvp.Value.XValues.Min();
+                var maxLoad = kvp.Value.XValues.Max();
+                var step = (maxLoad - minLoad) / 100;
 
-        // Создаем серию точек - аналог Python scatter series
-        var pointSeries = new ScatterSeries
-        {
-            Title = $"{status} ({routes.Count})",
-            MarkerType = MarkerType.Circle,
-            MarkerSize = 4,
-            MarkerFill = GetStatusColor(status),
-            MarkerStroke = OxyColors.DarkGray,
-            MarkerStrokeThickness = 0.5
-        };
-
-        // Добавляем точки маршрутов
-        foreach (var route in routes)
-        {
-            pointSeries.Points.Add(new ScatterPoint(
-                route.MechanicalWork, 
-                route.ElectricConsumption,
-                tag: route // Сохраняем ссылку на маршрут для hover
-            ));
-        }
-
-        // Добавляем серию в модель
-        System.Windows.Application.Current.Dispatcher.Invoke(() =>
-        {
-            NormsPlotModel.Series.Add(pointSeries);
-        });
-    }
-
-    /// <summary>
-    /// Добавляет анализ отклонений на нижний график - аналог Python _add_deviation_analysis
-    /// </summary>
-    private async Task AddDeviationAnalysisAsync()
-    {
-        await Task.Run(() =>
-        {
-            try
-            {
-                // Группируем маршруты по статусу для графика отклонений
-                var routesByStatus = _routesData
-                    .Where(r => r.MechanicalWork > 0)
-                    .GroupBy(r => ClassifyDeviation(r))
-                    .ToList();
-
-                foreach (var statusGroup in routesByStatus)
+                for (double load = (double)minLoad; load <= (double)maxLoad; load += step)
                 {
-                    AddDeviationPointsForStatus(statusGroup.Key, statusGroup.ToList());
-                }
-
-                // Добавляем границы зон отклонений - аналог Python zone boundaries
-                AddDeviationZoneBoundaries();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка анализа отклонений");
-            }
-        });
-    }
-
-    /// <summary>
-    /// Добавляет точки отклонений для конкретного статуса
-    /// </summary>
-    private void AddDeviationPointsForStatus(string status, List<Route> routes)
-    {
-        if (!routes.Any()) return;
-
-        var pointSeries = new ScatterSeries
-        {
-            Title = $"{status} ({routes.Count})",
-            MarkerType = MarkerType.Circle,
-            MarkerSize = 4,
-            MarkerFill = GetStatusColor(status),
-            MarkerStroke = OxyColors.DarkGray,
-            MarkerStrokeThickness = 0.5
-        };
-
-        // Добавляем точки отклонений
-        foreach (var route in routes)
-        {
-            pointSeries.Points.Add(new ScatterPoint(
-                route.MechanicalWork,
-                route.DeviationPercent,
-                tag: route
-            ));
-        }
-
-        System.Windows.Application.Current.Dispatcher.Invoke(() =>
-        {
-            DeviationsPlotModel.Series.Add(pointSeries);
-        });
-    }
-
-    /// <summary>
-    /// Добавляет границы зон отклонений - аналог Python zone indicators
-    /// </summary>
-    private void AddDeviationZoneBoundaries()
-    {
-        var boundaries = new[] { -30, -20, -5, 5, 20, 30 };
-        
-        foreach (var boundary in boundaries)
-        {
-            var line = new FunctionSeries(x => boundary, 0, 10000, 0.1)
-            {
-                Color = OxyColors.LightGray,
-                StrokeThickness = 1,
-                LineStyle = LineStyle.Dot,
-                Title = null // Не показываем в легенде
-            };
-
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
-            {
-                DeviationsPlotModel.Series.Add(line);
-            });
-        }
-    }
-
-    /// <summary>
-    /// Финальная конфигурация графиков - аналог Python _configure_layout
-    /// </summary>
-    private void ConfigureFinalLayout()
-    {
-        System.Windows.Application.Current.Dispatcher.Invoke(() =>
-        {
-            // Настраиваем автомасштабирование
-            foreach (var axis in NormsPlotModel.Axes)
-            {
-                axis.Reset();
-            }
-            
-            foreach (var axis in DeviationsPlotModel.Axes)
-            {
-                axis.Reset();
-            }
-
-            // Настраиваем легенду - аналог Python legend configuration
-            NormsPlotModel.LegendPosition = ShowLegend ? LegendPosition.RightTop : LegendPosition.None;
-            DeviationsPlotModel.LegendPosition = ShowLegend ? LegendPosition.RightTop : LegendPosition.None;
-
-            // Настраиваем интерактивность - аналог Python hover/click setup
-            NormsPlotModel.MouseDown += (sender, e) => HandlePlotMouseDown(NormsPlotModel, e);
-            DeviationsPlotModel.MouseDown += (sender, e) => HandlePlotMouseDown(DeviationsPlotModel, e);
-
-            // Финальное обновление графиков
-            NormsPlotModel.InvalidatePlot(true);
-            DeviationsPlotModel.InvalidatePlot(true);
-        });
-    }
-
-    /// <summary>
-    /// Обрабатывает клик по графику - универсальный handler
-    /// </summary>
-    private void HandlePlotMouseDown(PlotModel plotModel, OxyMouseDownEventArgs e)
-    {
-        try
-        {
-            if (e.ClickCount == 2) // Двойной клик для детальной информации
-            {
-                var hit = plotModel.HitTest(new HitTestArguments(e.Position, 10));
-                
-                if (hit?.Element is ScatterSeries series && hit.Index >= 0)
-                {
-                    var point = series.Points[hit.Index];
-                    if (point.Tag is Route route)
+                    var consumption = kvp.Value.Interpolate(load);
+                    if (consumption > 0)
                     {
-                        ShowRouteDetailsDialog(route);
+                        normSeries.Points.Add(new DataPoint(load, consumption));
                     }
                 }
+
+                NormsPlotModel.Series.Add(normSeries);
+                colorIndex++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ошибка при добавлении кривой нормы {NormId}", kvp.Key);
             }
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Ошибка обработки клика по графику");
-        }
-    }
 
-    /// <summary>
-    /// Создает интерполированную кривую нормы - аналог Python scipy interpolation
-    /// </summary>
-    private LineSeries CreateInterpolatedNormCurve(string normId, List<NormPoint> normPoints)
-    {
-        try
-        {
-            // Подготавливаем данные для интерполяции
-            var sortedPoints = normPoints
-                .Where(p => p.MechanicalWork > 0 && p.ElectricConsumption > 0)
-                .OrderBy(p => p.MechanicalWork)
-                .ToList();
-
-            if (sortedPoints.Count < 2)
-            {
-                _logger.LogWarning("Недостаточно точек для интерполяции нормы {NormId}", normId);
-                return CreateSimpleLineSeries(normId, sortedPoints);
-            }
-
-            // Создаем интерполированную кривую с высоким разрешением
-            var minWork = sortedPoints.First().MechanicalWork;
-            var maxWork = sortedPoints.Last().MechanicalWork;
-            var step = (maxWork - minWork) / 200; // 200 точек для плавной кривой
-
-            var interpolatedSeries = new LineSeries
-            {
-                Title = $"Норма {normId}",
-                Color = GetNormColor(normId),
-                StrokeThickness = 2.5,
-                Smooth = true
-            };
-
-            // Простая линейная интерполяция (можно заменить на сплайн-интерполяцию)
-            for (double work = minWork; work <= maxWork; work += step)
-            {
-                var consumption = InterpolateConsumption(sortedPoints, work);
-                interpolatedSeries.Points.Add(new DataPoint(work, consumption));
-            }
-
-            return interpolatedSeries;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Ошибка создания интерполированной кривой для нормы {NormId}", normId);
-            return CreateSimpleLineSeries(normId, normPoints);
-        }
-    }
-
-    /// <summary>
-    /// Создает простую линейную серию без интерполяции
-    /// </summary>
-    private LineSeries CreateSimpleLineSeries(string normId, List<NormPoint> points)
-    {
-        var series = new LineSeries
-        {
-            Title = $"Норма {normId}",
-            Color = GetNormColor(normId),
-            StrokeThickness = 2
-        };
-
-        foreach (var point in points.OrderBy(p => p.MechanicalWork))
-        {
-            series.Points.Add(new DataPoint(point.MechanicalWork, point.ElectricConsumption));
-        }
-
-        return series;
-    }
-
-    /// <summary>
-    /// Интерполяция потребления для заданной механической работы
-    /// Простая линейная интерполяция между ближайшими точками
-    /// </summary>
-    private double InterpolateConsumption(List<NormPoint> sortedPoints, double targetWork)
-    {
-        // Находим ближайшие точки
-        var beforePoint = sortedPoints.LastOrDefault(p => p.MechanicalWork <= targetWork);
-        var afterPoint = sortedPoints.FirstOrDefault(p => p.MechanicalWork >= targetWork);
-
-        if (beforePoint == null) return afterPoint?.ElectricConsumption ?? 0;
-        if (afterPoint == null) return beforePoint.ElectricConsumption;
-        if (Math.Abs(beforePoint.MechanicalWork - afterPoint.MechanicalWork) < 0.001) 
-            return beforePoint.ElectricConsumption;
-
-        // Линейная интерполяция
-        var ratio = (targetWork - beforePoint.MechanicalWork) / 
-                   (afterPoint.MechanicalWork - beforePoint.MechanicalWork);
-        
-        return beforePoint.ElectricConsumption + 
-               ratio * (afterPoint.ElectricConsumption - beforePoint.ElectricConsumption);
-    }
-
-    #endregion
-
-    #region Вспомогательные методы
-
-    /// <summary>
-    /// Классифицирует отклонение маршрута - аналог Python StatusClassifier
-    /// </summary>
-    private string ClassifyDeviation(Route route)
-    {
-        // Реализация классификации на основе отклонения от нормы
-        var deviation = route.DeviationPercent;
-        
-        return deviation switch
-        {
-            < -30 => "Экономия сильная",
-            < -20 => "Экономия средняя", 
-            < -5 => "Экономия слабая",
-            <= 5 => "В норме",
-            <= 20 => "Перерасход слабый",
-            <= 30 => "Перерасход средний",
-            _ => "Перерасход сильный"
-        };
-    }
-
-    /// <summary>
-    /// Получает цвет для нормы по ID
-    /// </summary>
-    private OxyColor GetNormColor(string normId)
-    {
-        // Генерируем консистентные цвета для норм
-        var hash = normId.GetHashCode();
-        var colors = new[] { 
-            OxyColors.Blue, OxyColors.Red, OxyColors.Green, 
-            OxyColors.Purple, OxyColors.Orange, OxyColors.Brown 
-        };
-        return colors[Math.Abs(hash) % colors.Length];
-    }
-
-    /// <summary>
-    /// Получает цвет для статуса отклонения - аналог Python status colors
-    /// </summary>
-    private OxyColor GetStatusColor(string status)
-    {
-        return status switch
-        {
-            "Экономия сильная" => OxyColors.DarkGreen,
-            "Экономия средняя" => OxyColors.Green,
-            "Экономия слабая" => OxyColors.LightGreen,
-            "В норме" => OxyColors.Blue,
-            "Перерасход слабый" => OxyColors.Orange,
-            "Перерасход средний" => OxyColors.OrangeRed,
-            "Перерасход сильный" => OxyColors.Red,
-            _ => OxyColors.Gray
-        };
-    }
-
-    #endregion
-
-    #region Commands Implementation
-
-    private void ResetZoom()
-    {
-        NormsPlotModel.ResetAllAxes();
-        DeviationsPlotModel.ResetAllAxes();
-        NormsPlotModel.InvalidatePlot(true);
-        DeviationsPlotModel.InvalidatePlot(true);
-    }
-
-    private async Task ExportImageAsync(object? parameter)
-    {
-        // Реализация экспорта изображения
-        _logger.LogInformation("Экспорт графика в изображение...");
-    }
-
-    private void ShowDataTable()
-    {
-        // Реализация показа таблицы данных
-        _logger.LogInformation("Показ таблицы данных...");
-    }
-
-    private async Task UpdatePlotsForDisplayModeAsync()
-    {
-        // Обновление графиков при смене режима отображения
         await Task.CompletedTask;
     }
 
-    private void UpdatePointsVisibility()
-    {
-        // Обновление видимости точек
-    }
-
-    private void UpdateLegendVisibility()
-    {
-        // Обновление видимости легенды
-    }
-
-    #endregion
-
-    #region Mouse Event Handlers - аналоги Python hover/click
-
     /// <summary>
-    /// Обработчик клика по графику норм - аналог Python plot click handlers
+    /// Создает график отклонений от норм
     /// </summary>
-    public void OnNormsPlotMouseDown(System.Windows.Input.MouseButtonEventArgs e)
+    private async Task CreateDeviationsPlotAsync(List<Route> routes)
     {
+        if (DeviationsPlotModel == null) return;
+
         try
         {
-            if (e.ClickCount == 2) // Двойной клик для детальной информации
-            {
-                var plotView = e.Source as OxyPlot.Wpf.PlotView;
-                var position = e.GetPosition(plotView);
-                
-                // Преобразуем позицию мыши в координаты графика
-                var screenPoint = new ScreenPoint(position.X, position.Y);
-                var hit = NormsPlotModel.HitTest(new HitTestArguments(screenPoint, 10));
-                
-                if (hit?.Element is ScatterSeries series && hit.Index >= 0)
-                {
-                    var point = series.Points[hit.Index];
-                    if (point.Tag is Route route)
-                    {
-                        ShowRouteDetailsDialog(route);
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Ошибка обработки клика по графику норм");
-        }
-    }
+            DeviationsPlotModel.Series.Clear();
 
-    /// <summary>
-    /// Обработчик движения мыши по графику норм - аналог Python hover handlers
-    /// </summary>
-    public void OnNormsPlotMouseMove(System.Windows.Input.MouseEventArgs e)
-    {
-        try
-        {
-            var plotView = e.Source as OxyPlot.Wpf.PlotView;
-            var position = e.GetPosition(plotView);
-            var screenPoint = new ScreenPoint(position.X, position.Y);
-            
-            // Ищем ближайшую точку для hover эффекта
-            var hit = NormsPlotModel.HitTest(new HitTestArguments(screenPoint, 15));
-            
-            if (hit?.Element is ScatterSeries series && hit.Index >= 0)
-            {
-                var point = series.Points[hit.Index];
-                if (point.Tag is Route route)
-                {
-                    // Обновляем информацию о выбранной точке - аналог Python hover info
-                    SelectedPointInfo = $"Маршрут {route.RouteNumber}: {route.MechanicalWork:F0} кВт⋅час → {route.ElectricConsumption:F0} кВт⋅час ({route.DeviationPercent:+F1}%)";
-                }
-            }
-            else
-            {
-                SelectedPointInfo = string.Empty;
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Ошибка обработки hover графика норм");
-        }
-    }
+            // Группируем маршруты по статусам отклонений
+            var groupedRoutes = routes
+                .Where(r => r.AxleLoad > 0 && (r.DeviationPercentage.HasValue || r.DeviationPercent.HasValue))
+                .GroupBy(r => r.Status)
+                .ToList();
 
-    /// <summary>
-    /// Обработчик клика по графику отклонений - аналог Python deviation click handlers
-    /// </summary>
-    public void OnDeviationsPlotMouseDown(System.Windows.Input.MouseButtonEventArgs e)
-    {
-        try
-        {
-            if (e.ClickCount == 2) // Двойной клик
+            var statusColors = new Dictionary<DeviationStatus, OxyColor>
             {
-                var plotView = e.Source as OxyPlot.Wpf.PlotView;
-                var position = e.GetPosition(plotView);
-                var screenPoint = new ScreenPoint(position.X, position.Y);
-                var hit = DeviationsPlotModel.HitTest(new HitTestArguments(screenPoint, 10));
-                
-                if (hit?.Element is ScatterSeries series && hit.Index >= 0)
-                {
-                    var point = series.Points[hit.Index];
-                    if (point.Tag is Route route)
-                    {
-                        ShowRouteDetailsDialog(route);
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Ошибка обработки клика по графику отклонений");
-        }
-    }
-
-    /// <summary>
-    /// Обработчик движения мыши по графику отклонений
-    /// </summary>
-    public void OnDeviationsPlotMouseMove(System.Windows.Input.MouseEventArgs e)
-    {
-        try
-        {
-            var plotView = e.Source as OxyPlot.Wpf.PlotView;
-            var position = e.GetPosition(plotView);
-            var screenPoint = new ScreenPoint(position.X, position.Y);
-            var hit = DeviationsPlotModel.HitTest(new HitTestArguments(screenPoint, 15));
-            
-            if (hit?.Element is ScatterSeries series && hit.Index >= 0)
-            {
-                var point = series.Points[hit.Index];
-                if (point.Tag is Route route)
-                {
-                    SelectedPointInfo = $"Маршрут {route.RouteNumber}: отклонение {route.DeviationPercent:+F1}% от нормы";
-                }
-            }
-            else
-            {
-                SelectedPointInfo = string.Empty;
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Ошибка обработки hover графика отклонений");
-        }
-    }
-
-    /// <summary>
-    /// Показывает модальное окно с детальной информацией о маршруте
-    /// Аналог Python modal dialog с детальными данными
-    /// </summary>
-    private void ShowRouteDetailsDialog(Route route)
-    {
-        try
-        {
-            var details = new System.Text.StringBuilder();
-            
-            details.AppendLine($"ДЕТАЛЬНАЯ ИНФОРМАЦИЯ О МАРШРУТЕ");
-            details.AppendLine("=".PadRight(50, '='));
-            details.AppendLine();
-            details.AppendLine($"Номер маршрута: {route.RouteNumber}");
-            details.AppendLine($"Участки: {string.Join(" → ", route.SectionNames)}");
-            details.AppendLine($"Локомотив: {route.LocomotiveSeries} (тип: {route.LocomotiveType})");
-            details.AppendLine($"Норма ID: {route.NormId}");
-            details.AppendLine();
-            details.AppendLine("ЭНЕРГЕТИЧЕСКИЕ ПОКАЗАТЕЛИ:");
-            details.AppendLine("-".PadRight(30, '-'));
-            details.AppendLine($"Механическая работа: {route.MechanicalWork:F2} кВт⋅час");
-            details.AppendLine($"Расход электроэнергии: {route.ElectricConsumption:F2} кВт⋅час");
-            details.AppendLine($"Удельный расход: {route.SpecificConsumption:F3} кВт⋅час/ткм⋅км");
-            details.AppendLine($"Отклонение от нормы: {route.DeviationPercent:+F1}%");
-            details.AppendLine();
-            details.AppendLine("ЭКСПЛУАТАЦИОННЫЕ ДАННЫЕ:");
-            details.AppendLine("-".PadRight(30, '-'));
-            details.AppendLine($"Масса состава: {route.TrainWeight:F0} т");
-            details.AppendLine($"Расстояние: {route.Distance:F1} км");
-            details.AppendLine($"Время поездки: {route.TravelTime}");
-            
-            if (route.WeatherConditions != null)
-            {
-                details.AppendLine($"Погодные условия: {route.WeatherConditions}");
-            }
-            
-            if (!string.IsNullOrEmpty(route.Comments))
-            {
-                details.AppendLine();
-                details.AppendLine("КОММЕНТАРИИ:");
-                details.AppendLine("-".PadRight(15, '-'));
-                details.AppendLine(route.Comments);
-            }
-
-            // Показываем диалог в UI потоке
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
-            {
-                var window = System.Windows.Application.Current.Windows
-                    .OfType<Windows.PlotWindow>()
-                    .FirstOrDefault();
-                
-                window?.ShowPointDetailsDialog(
-                    $"Маршрут {route.RouteNumber}",
-                    details.ToString()
-                );
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Ошибка показа детальной информации о маршруте");
-        }
-    }
-
-    #endregion
-
-    #region Commands Implementation - завершение
-
-    /// <summary>
-    /// Экспорт графика в изображение - аналог Python export plot
-    /// </summary>
-    private async Task ExportImageAsync(object? parameter)
-    {
-        try
-        {
-            var dialog = new Microsoft.Win32.SaveFileDialog
-            {
-                Title = "Экспорт графика",
-                Filter = "PNG изображения (*.png)|*.png|JPEG изображения (*.jpg)|*.jpg|Все файлы (*.*)|*.*",
-                DefaultExt = "png",
-                FileName = $"График_{_sectionName}_{DateTime.Now:yyyyMMdd_HHmmss}"
+                { DeviationStatus.StrongEconomy, OxyColors.DarkGreen },
+                { DeviationStatus.MediumEconomy, OxyColors.Green },
+                { DeviationStatus.WeakEconomy, OxyColors.LightGreen },
+                { DeviationStatus.Normal, OxyColors.Blue },
+                { DeviationStatus.WeakOverrun, OxyColors.Orange },
+                { DeviationStatus.MediumOverrun, OxyColors.OrangeRed },
+                { DeviationStatus.StrongOverrun, OxyColors.Red }
             };
 
-            if (dialog.ShowDialog() == true)
+            foreach (var group in groupedRoutes)
             {
-                await ExportToImageFile(dialog.FileName);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Ошибка экспорта изображения");
-            System.Windows.MessageBox.Show(
-                $"Ошибка экспорта: {ex.Message}",
-                "Ошибка",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error
-            );
-        }
-    }
-
-    /// <summary>
-    /// Экспорт в файл изображения
-    /// </summary>
-    private async Task ExportToImageFile(string filePath)
-    {
-        await Task.Run(() =>
-        {
-            try
-            {
-                // Экспорт OxyPlot в PNG
-                var width = 1200;
-                var height = 800;
-
-                // Создаем объединенный график для экспорта
-                var exportModel = new PlotModel
+                var series = new ScatterSeries
                 {
-                    Title = PlotTitle,
-                    Background = OxyColors.White
+                    Title = DeviationStatusHelper.GetDescription(group.Key),
+                    MarkerType = MarkerType.Circle,
+                    MarkerSize = 4,
+                    MarkerFill = statusColors.GetValueOrDefault(group.Key, OxyColors.Gray),
+                    MarkerStroke = statusColors.GetValueOrDefault(group.Key, OxyColors.Gray)
                 };
 
-                // Копируем серии из обоих графиков
-                foreach (var series in NormsPlotModel.Series)
+                foreach (var route in group)
                 {
-                    exportModel.Series.Add(series);
+                    // ИСПРАВЛЕНО: правильная работа с восстановленными свойствами
+                    var deviationPercent = route.DeviationPercentage ?? route.DeviationPercent ?? 0;
+
+                    series.Points.Add(new ScatterPoint(
+                        (double)route.AxleLoad,
+                        (double)deviationPercent)
+                    {
+                        Tag = route
+                    });
                 }
 
-                // Копируем оси
-                foreach (var axis in NormsPlotModel.Axes)
-                {
-                    exportModel.Axes.Add(axis);
-                }
-
-                // Экспортируем в файл
-                var exporter = new OxyPlot.Wpf.PngExporter { Width = width, Height = height };
-                exporter.ExportToFile(exportModel, filePath);
-
-                System.Windows.Application.Current.Dispatcher.Invoke(() =>
-                {
-                    System.Windows.MessageBox.Show(
-                        $"График успешно экспортирован:\n{filePath}",
-                        "Экспорт завершен",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Information
-                    );
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Ошибка записи файла изображения");
-                throw;
-            }
-        });
-    }
-
-    /// <summary>
-    /// Показывает таблицу данных - аналог Python data table view
-    /// </summary>
-    private void ShowDataTable()
-    {
-        try
-        {
-            var dataTableContent = new System.Text.StringBuilder();
-            
-            dataTableContent.AppendLine("ТАБЛИЦА ДАННЫХ АНАЛИЗА");
-            dataTableContent.AppendLine("=".PadRight(80, '='));
-            dataTableContent.AppendLine();
-            
-            dataTableContent.AppendLine($"{"№ Маршрута",-12} | {"Мех. работа",-12} | {"Электр. расх.",-13} | {"Отклонение",-12} | {"Статус",-15}");
-            dataTableContent.AppendLine("-".PadRight(80, '-'));
-            
-            foreach (var route in _routesData.OrderBy(r => r.RouteNumber))
-            {
-                var status = ClassifyDeviation(route);
-                dataTableContent.AppendLine(
-                    $"{route.RouteNumber,-12} | " +
-                    $"{route.MechanicalWork,-12:F0} | " +
-                    $"{route.ElectricConsumption,-13:F0} | " +
-                    $"{route.DeviationPercent,-12:+F1}% | " +
-                    $"{status,-15}"
-                );
+                DeviationsPlotModel.Series.Add(series);
             }
 
-            // Показываем в модальном окне
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
-            {
-                var window = System.Windows.Application.Current.Windows
-                    .OfType<Windows.PlotWindow>()
-                    .FirstOrDefault();
-                
-                window?.ShowPointDetailsDialog(
-                    "Таблица данных анализа",
-                    dataTableContent.ToString()
-                );
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Ошибка показа таблицы данных");
-        }
-    }
+            // Добавляем горизонтальные линии для границ норм
+            AddDeviationBoundaryLines();
 
-    /// <summary>
-    /// Обновление графиков при смене режима отображения
-    /// Аналог Python режим переключения "Уд. на работу" / "Н/Ф"
-    /// </summary>
-    private async Task UpdatePlotsForDisplayModeAsync()
-    {
-        try
-        {
-            await Task.Run(() =>
-            {
-                System.Windows.Application.Current.Dispatcher.Invoke(() =>
-                {
-                    // Очищаем текущие серии точек (оставляем нормы)
-                    var seriesToRemove = NormsPlotModel.Series
-                        .OfType<ScatterSeries>()
-                        .ToList();
-                    
-                    foreach (var series in seriesToRemove)
-                    {
-                        NormsPlotModel.Series.Remove(series);
-                    }
-
-                    // Обновляем оси в зависимости от режима
-                    if (SelectedDisplayMode == "Удельный расход")
-                    {
-                        UpdateAxesForSpecificConsumption();
-                    }
-                    else
-                    {
-                        UpdateAxesForAbsoluteValues();
-                    }
-
-                    // Добавляем точки заново с новым масштабом
-                    _ = AddRoutePointsToPlotsAsync();
-                });
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Ошибка смены режима отображения");
-        }
-    }
-
-    /// <summary>
-    /// Настраивает оси для режима удельного расхода
-    /// </summary>
-    private void UpdateAxesForSpecificConsumption()
-    {
-        var yAxis = NormsPlotModel.Axes.FirstOrDefault(a => a.Position == AxisPosition.Left);
-        if (yAxis != null)
-        {
-            yAxis.Title = "Удельный расход (кВт⋅час/ткм⋅км)";
-        }
-    }
-
-    /// <summary>
-    /// Настраивает оси для режима абсолютных значений
-    /// </summary>
-    private void UpdateAxesForAbsoluteValues()
-    {
-        var yAxis = NormsPlotModel.Axes.FirstOrDefault(a => a.Position == AxisPosition.Left);
-        if (yAxis != null)
-        {
-            yAxis.Title = "Расход электроэнергии (кВт⋅час)";
-        }
-    }
-
-    /// <summary>
-    /// Обновляет видимость точек данных
-    /// </summary>
-    private void UpdatePointsVisibility()
-    {
-        try
-        {
-            foreach (var series in NormsPlotModel.Series.OfType<ScatterSeries>())
-            {
-                series.MarkerSize = ShowDataPoints ? 4 : 0;
-            }
-            
-            foreach (var series in DeviationsPlotModel.Series.OfType<ScatterSeries>())
-            {
-                series.MarkerSize = ShowDataPoints ? 4 : 0;
-            }
-
-            NormsPlotModel.InvalidatePlot(true);
             DeviationsPlotModel.InvalidatePlot(true);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Ошибка обновления видимости точек");
+            _logger.LogError(ex, "Ошибка при создании графика отклонений");
         }
+
+        await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Добавляет граничные линии отклонений
+    /// </summary>
+    private void AddDeviationBoundaryLines()
+    {
+        if (DeviationsPlotModel == null) return;
+
+        var boundaries = new[] { -10, -5, -2, 2, 5, 10 };
+        var colors = new[] { OxyColors.DarkGreen, OxyColors.Green, OxyColors.LightGreen,
+                           OxyColors.LightCoral, OxyColors.Orange, OxyColors.Red };
+
+        for (int i = 0; i < boundaries.Length; i++)
+        {
+            var line = new LineSeries
+            {
+                Title = $"{(boundaries[i] > 0 ? "+" : "")}{boundaries[i]}%",
+                Color = colors[i],
+                LineStyle = LineStyle.Dash,
+                StrokeThickness = 1
+            };
+
+            // Создаем горизонтальную линию через весь график
+            line.Points.Add(new DataPoint(0, boundaries[i]));
+            line.Points.Add(new DataPoint(50, boundaries[i])); // Предполагаем максимум 50 т/ось
+
+            DeviationsPlotModel.Series.Add(line);
+        }
+    }
+
+    #endregion
+
+    #region Event Handlers and Updates
+
+    /// <summary>
+    /// Обработчик клика по точке на графике
+    /// ИСПРАВЛЕНО: правильная работа с HitTestResult
+    /// </summary>
+    public void HandlePlotClick(object sender, OxyMouseEventArgs e)
+    {
+        try
+        {
+            var plotModel = sender as PlotModel;
+            if (plotModel == null) return;
+
+            // ИСПРАВЛЕНО: правильное использование HitTest
+            var hitResult = plotModel.HitTest(new HitTestArguments(e.Position, 5));
+
+            if (hitResult != null)
+            {
+                // Находим серию и точку
+                if (hitResult.Item is ScatterSeries series && hitResult.Index >= 0)
+                {
+                    if (hitResult.Index < series.Points.Count)
+                    {
+                        var point = series.Points[hitResult.Index];
+                        if (point.Tag is Route route)
+                        {
+                            ShowRouteDetailsDialog(route);
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ошибка при обработке клика по графику");
+        }
+    }
+
+    /// <summary>
+    /// Обновляет видимость точек
+    /// </summary>
+    private void UpdatePointsVisibility()
+    {
+        try
+        {
+            UpdateSeriesPointsVisibility(NormsPlotModel);
+            UpdateSeriesPointsVisibility(DeviationsPlotModel);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ошибка при обновлении видимости точек");
+        }
+    }
+
+    /// <summary>
+    /// Обновляет видимость точек для конкретной модели
+    /// </summary>
+    private void UpdateSeriesPointsVisibility(PlotModel? plotModel)
+    {
+        if (plotModel == null) return;
+
+        foreach (var series in plotModel.Series.OfType<ScatterSeries>())
+        {
+            series.MarkerType = ShowPoints ? MarkerType.Circle : MarkerType.None;
+        }
+
+        plotModel.InvalidatePlot(true);
     }
 
     /// <summary>
@@ -1316,75 +649,289 @@ public class PlotWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         try
         {
-            var position = ShowLegend ? LegendPosition.RightTop : LegendPosition.None;
-            
-            NormsPlotModel.LegendPosition = position;
-            DeviationsPlotModel.LegendPosition = position;
-            
-            NormsPlotModel.InvalidatePlot(true);
-            DeviationsPlotModel.InvalidatePlot(true);
+            UpdatePlotLegendVisibility(NormsPlotModel);
+            UpdatePlotLegendVisibility(DeviationsPlotModel);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Ошибка обновления легенды");
+            _logger.LogError(ex, "Ошибка при обновлении видимости легенды");
         }
     }
 
     /// <summary>
-    /// Показывает детальную информацию о маршруте в модальном окне
-    /// Полный аналог Python modal dialog functionality
+    /// Обновляет видимость легенды для конкретной модели
+    /// </summary>
+    private void UpdatePlotLegendVisibility(PlotModel? plotModel)
+    {
+        if (plotModel == null) return;
+
+        // ИСПРАВЛЕНО: правильная работа с легендой OxyPlot
+        foreach (var legend in plotModel.Legends)
+        {
+            legend.IsLegendVisible = ShowLegend;
+        }
+
+        plotModel.InvalidatePlot(true);
+    }
+
+    /// <summary>
+    /// Обновляет графики по режиму отображения
+    /// </summary>
+    private async Task UpdatePlotsForDisplayModeAsync()
+    {
+        try
+        {
+            StatusMessage = "Обновление графиков...";
+
+            var filteredRoutes = FilterRoutesByDisplayMode(Routes.ToList());
+
+            await CreateNormsPlotAsync(filteredRoutes, null);
+            await CreateDeviationsPlotAsync(filteredRoutes);
+
+            StatusMessage = $"Отображено маршрутов: {filteredRoutes.Count}";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ошибка при обновлении графиков по режиму отображения");
+            StatusMessage = "Ошибка обновления";
+        }
+    }
+
+    /// <summary>
+    /// Фильтрует маршруты по выбранному режиму отображения
+    /// </summary>
+    private List<Route> FilterRoutesByDisplayMode(List<Route> routes)
+    {
+        return SelectedDisplayMode switch
+        {
+            "Только экономия" => routes.Where(r => r.Status.IsEconomy()).ToList(),
+            "Только перерасход" => routes.Where(r => r.Status.IsOverrun()).ToList(),
+            "Только норма" => routes.Where(r => r.Status.IsNormal()).ToList(),
+            "По локомотивам" => routes.OrderBy(r => r.LocomotiveSeries).ThenBy(r => r.LocomotiveNumber).ToList(),
+            "По участкам" => routes.OrderBy(r => string.Join(",", r.SectionNames)).ToList(),
+            _ => routes
+        };
+    }
+
+    #endregion
+
+    #region Command Implementations
+
+    /// <summary>
+    /// Показывает таблицу данных
+    /// </summary>
+    private void ShowDataTable()
+    {
+        try
+        {
+            if (!Routes.Any())
+            {
+                MessageBox.Show("Нет данных для отображения", "Информация",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // Создаем простое окно с таблицей данных
+            var dataWindow = new Window
+            {
+                Title = "Данные маршрутов",
+                Width = 800,
+                Height = 600,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen
+            };
+
+            var dataGrid = new System.Windows.Controls.DataGrid
+            {
+                ItemsSource = Routes,
+                AutoGenerateColumns = true,
+                IsReadOnly = true,
+                CanUserAddRows = false,
+                CanUserDeleteRows = false
+            };
+
+            dataWindow.Content = dataGrid;
+            dataWindow.Show();
+
+            _logger.LogInformation("Открыто окно с таблицей данных");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ошибка при показе таблицы данных");
+            MessageBox.Show("Ошибка при открытии таблицы данных", "Ошибка",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>
+    /// Экспортирует изображение графика
+    /// </summary>
+    private async Task ExportImageAsync()
+    {
+        try
+        {
+            var saveDialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Сохранить график как изображение",
+                Filter = "PNG файлы (*.png)|*.png|JPEG файлы (*.jpg)|*.jpg|Все файлы (*.*)|*.*",
+                DefaultExt = "png"
+            };
+
+            if (saveDialog.ShowDialog() == true)
+            {
+                StatusMessage = "Экспорт изображения...";
+
+                // Экспортируем график норм
+                if (NormsPlotModel != null)
+                {
+                    var pngExporter = new OxyPlot.SkiaSharp.PngExporter { Width = 800, Height = 600 };
+                    await using var stream = File.Create(saveDialog.FileName);
+                    pngExporter.Export(NormsPlotModel, stream);
+                }
+
+                StatusMessage = "Изображение сохранено";
+                _logger.LogInformation("График экспортирован в файл: {FilePath}", saveDialog.FileName);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ошибка при экспорте изображения");
+            StatusMessage = "Ошибка экспорта";
+            MessageBox.Show("Ошибка при экспорте изображения", "Ошибка",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>
+    /// Обновляет данные графиков
+    /// </summary>
+    private async Task RefreshDataAsync()
+    {
+        try
+        {
+            StatusMessage = "Обновление данных...";
+            await RefreshPlotsAsync();
+            StatusMessage = "Данные обновлены";
+
+            _logger.LogInformation("Данные графиков обновлены");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ошибка при обновлении данных");
+            StatusMessage = "Ошибка обновления";
+        }
+    }
+
+    /// <summary>
+    /// ВОССТАНОВЛЕНО: Показывает детальную информацию о маршруте с исходной логикой
     /// </summary>
     private void ShowRouteDetailsDialog(Route route)
     {
         try
         {
-            var details = new System.Text.StringBuilder();
-            
-            details.AppendLine($"ДЕТАЛЬНАЯ ИНФОРМАЦИЯ О МАРШРУТЕ {route.RouteNumber}");
-            details.AppendLine("=".PadRight(60, '='));
+            // ВОССТАНОВЛЕНО: исходная логика формирования деталей из оригинального файла
+            var details = new StringBuilder();
+            details.AppendLine("ОСНОВНАЯ ИНФОРМАЦИЯ О МАРШРУТЕ");
+            details.AppendLine("=".PadRight(40, '='));
+            details.AppendLine($"Номер маршрута: {route.RouteNumber ?? route.Name}");
+            details.AppendLine($"Дата поездки: {(route.TripDate != default ? route.TripDate : route.Date):dd.MM.yyyy}");
+            details.AppendLine($"Участок: {route.SectionName}");
             details.AppendLine();
-            
-            details.AppendLine("ОСНОВНЫЕ ДАННЫЕ:");
-            details.AppendLine("-".PadRight(20, '-'));
-            details.AppendLine($"Номер маршрута: {route.RouteNumber}");
-            details.AppendLine($"Участки: {string.Join(" → ", route.SectionNames)}");
-            details.AppendLine($"Дата поездки: {route.TripDate:dd.MM.yyyy HH:mm}");
-            details.AppendLine();
-            
+
             details.AppendLine("ЛОКОМОТИВ:");
             details.AppendLine("-".PadRight(15, '-'));
             details.AppendLine($"Серия: {route.LocomotiveSeries}");
-            details.AppendLine($"Тип: {route.LocomotiveType}");
             details.AppendLine($"Номер: {route.LocomotiveNumber}");
+            details.AppendLine($"Тип: {route.LocomotiveType}");
+            details.AppendLine($"Депо: {route.Depot}");
             details.AppendLine();
-            
+
             details.AppendLine("ЭНЕРГЕТИЧЕСКИЕ ПОКАЗАТЕЛИ:");
             details.AppendLine("-".PadRight(30, '-'));
-            details.AppendLine($"Механическая работа: {route.MechanicalWork:F2} кВт⋅час");
-            details.AppendLine($"Расход электроэнергии: {route.ElectricConsumption:F2} кВт⋅час");
-            details.AppendLine($"Удельный расход: {route.SpecificConsumption:F3} кВт⋅час/ткм⋅км");
-            details.AppendLine($"КПД: {route.Efficiency:F2}%");
+
+            // ВОССТАНОВЛЕНО: работа с исходными свойствами ElectricConsumption и MechanicalWork
+            var electricConsumption = route.ElectricConsumption ?? route.FactConsumption ?? route.ActualConsumption;
+            var mechanicalWork = route.MechanicalWork;
+            var specificConsumption = route.SpecificConsumption ?? route.FactUd;
+
+            if (mechanicalWork.HasValue)
+                details.AppendLine($"Механическая работа: {mechanicalWork:F2} кВт⋅час");
+
+            if (electricConsumption.HasValue)
+                details.AppendLine($"Расход электроэнергии: {electricConsumption:F2} кВт⋅час");
+
+            if (specificConsumption.HasValue)
+                details.AppendLine($"Удельный расход: {specificConsumption:F3} кВт⋅час/ткм⋅км");
+
+            // ВОССТАНОВЛЕНО: расчет эффективности из исходного файла
+            if (mechanicalWork.HasValue && electricConsumption.HasValue && electricConsumption > 0)
+            {
+                var efficiency = mechanicalWork / electricConsumption * 100;
+                details.AppendLine($"КПД: {efficiency:F2}%");
+            }
+            else if (route.Efficiency.HasValue)
+            {
+                details.AppendLine($"Эффективность: {route.Efficiency:F2}%");
+            }
+
             details.AppendLine();
-            
+
             details.AppendLine("АНАЛИЗ ОТКЛОНЕНИЙ:");
             details.AppendLine("-".PadRight(20, '-'));
-            details.AppendLine($"Отклонение от нормы: {route.DeviationPercent:+F1}%");
-            details.AppendLine($"Статус: {ClassifyDeviation(route)}");
-            details.AppendLine($"Норма расхода: {route.NormConsumption:F2} кВт⋅час");
+
+            var deviationPercent = route.DeviationPercentage ?? route.DeviationPercent;
+            if (deviationPercent.HasValue)
+            {
+                details.AppendLine($"Отклонение от нормы: {deviationPercent:+F1;-F1;0.0}%");
+            }
+
+            details.AppendLine($"Статус: {DeviationStatusHelper.GetDescription(route.Status)}");
+
+            var normConsumption = route.NormativeConsumption ?? route.NormConsumption;
+            if (normConsumption.HasValue)
+                details.AppendLine($"Норма расхода: {normConsumption:F2} кВт⋅час");
+
             details.AppendLine();
-            
+
             details.AppendLine("ЭКСПЛУАТАЦИОННЫЕ УСЛОВИЯ:");
             details.AppendLine("-".PadRight(25, '-'));
-            details.AppendLine($"Масса состава: {route.TrainWeight:F0} т");
-            details.AppendLine($"Расстояние: {route.Distance:F1} км");
-            details.AppendLine($"Время в пути: {route.TravelTime}");
-            details.AppendLine($"Средняя скорость: {route.AverageSpeed:F1} км/ч");
-            
+
+            // ВОССТАНОВЛЕНО: работа с различными вариантами массы из исходного файла
+            var trainMass = route.TrainMass > 0 ? route.TrainMass :
+                           route.TrainWeight ?? route.BruttoTons ?? route.NettoTons ?? 0;
+            if (trainMass > 0)
+                details.AppendLine($"Масса состава: {trainMass:F0} т");
+
+            if (route.Distance > 0)
+                details.AppendLine($"Расстояние: {route.Distance:F1} км");
+
+            if (route.TravelTime != default(TimeSpan))
+                details.AppendLine($"Время в пути: {route.TravelTime:hh\\:mm}");
+
+            // ВОССТАНОВЛЕНО: расчет средней скорости из исходного файла
+            if (route.AverageSpeed.HasValue)
+            {
+                details.AppendLine($"Средняя скорость: {route.AverageSpeed:F1} км/ч");
+            }
+            else if (route.Distance > 0 && route.TravelTime.TotalHours > 0)
+            {
+                var avgSpeed = route.Distance / (decimal)route.TravelTime.TotalHours;
+                details.AppendLine($"Средняя скорость: {avgSpeed:F1} км/ч");
+            }
+
+            if (route.AxleLoad > 0)
+                details.AppendLine($"Нагрузка на ось: {route.AxleLoad:F1} т/ось");
+
+            // ВОССТАНОВЛЕНО: дополнительные поля из исходного файла
             if (!string.IsNullOrEmpty(route.WeatherConditions))
             {
-                details.AppendLine($"Погода: {route.WeatherConditions}");
+                details.AppendLine($"Погодные условия: {route.WeatherConditions}");
             }
-            
+
+            if (route.SectionNames.Any())
+            {
+                details.AppendLine($"Участки маршрута: {string.Join(", ", route.SectionNames)}");
+            }
+
             if (!string.IsNullOrEmpty(route.Comments))
             {
                 details.AppendLine();
@@ -1393,28 +940,85 @@ public class PlotWindowViewModel : INotifyPropertyChanged, IDisposable
                 details.AppendLine(route.Comments);
             }
 
-            // Показываем диалог в UI потоке
+            // ВОССТАНОВЛЕНО: показ диалога из исходного файла
             System.Windows.Application.Current.Dispatcher.Invoke(() =>
             {
                 var window = System.Windows.Application.Current.Windows
                     .OfType<Windows.PlotWindow>()
                     .FirstOrDefault();
-                
-                window?.ShowPointDetailsDialog(
-                    $"Маршрут {route.RouteNumber} - Детальная информация",
-                    details.ToString()
-                );
+
+                if (window != null)
+                {
+                    // Если есть специальный метод показа деталей
+                    var method = window.GetType().GetMethod("ShowPointDetailsDialog");
+                    if (method != null)
+                    {
+                        method.Invoke(window, new object[] {
+                            $"Маршрут {route.RouteNumber ?? route.Name} - Детальная информация",
+                            details.ToString()
+                        });
+                    }
+                    else
+                    {
+                        // Иначе показываем стандартный MessageBox
+                        MessageBox.Show(details.ToString(),
+                            $"Детали маршрута: {route.RouteNumber ?? route.Name}",
+                            MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                }
+                else
+                {
+                    // Fallback для случая, когда окно не найдено
+                    MessageBox.Show(details.ToString(),
+                        $"Детали маршрута: {route.RouteNumber ?? route.Name}",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                }
             });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Ошибка формирования детальной информации о маршруте");
+            _logger.LogError(ex, "Ошибка при формировании детальной информации о маршруте");
+            MessageBox.Show("Ошибка при отображении деталей маршрута", "Ошибка",
+                MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
     #endregion
 
-    #region INotifyPropertyChanged + IDisposable
+    #region Helper Methods
+
+    /// <summary>
+    /// Обновляет все графики
+    /// </summary>
+    private async Task RefreshPlotsAsync()
+    {
+        var routes = Routes.ToList();
+        await CreateNormsPlotAsync(routes, null);
+        await CreateDeviationsPlotAsync(routes);
+    }
+
+    /// <summary>
+    /// ВОССТАНОВЛЕНО: Классификатор отклонений из исходного файла
+    /// </summary>
+    private string ClassifyDeviation(Route route)
+    {
+        var deviation = route.DeviationPercentage ?? route.DeviationPercent ?? 0;
+
+        return deviation switch
+        {
+            < -30 => "Экономия сильная",
+            < -20 => "Экономия средняя",
+            < -5 => "Экономия слабая",
+            <= 5 => "В норме",
+            <= 20 => "Перерасход слабый",
+            <= 30 => "Перерасход средний",
+            _ => "Перерасход сильный"
+        };
+    }
+
+    #endregion
+
+    #region INotifyPropertyChanged Implementation
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -1423,22 +1027,110 @@ public class PlotWindowViewModel : INotifyPropertyChanged, IDisposable
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
-    protected bool SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+    protected bool SetProperty<T>(ref T backingStore, T value, [CallerMemberName] string? propertyName = null)
     {
-        if (EqualityComparer<T>.Default.Equals(field, value)) return false;
-        field = value;
+        if (EqualityComparer<T>.Default.Equals(backingStore, value))
+            return false;
+
+        backingStore = value;
         OnPropertyChanged(propertyName);
         return true;
     }
 
+    #endregion
+
+    #region IDisposable Implementation
+
+    private bool _disposed = false;
+
     public void Dispose()
     {
-        _routesData.Clear();
-        _normFunctions.Clear();
-        NormsPlotModel?.Dispose();
-        DeviationsPlotModel?.Dispose();
+        Dispose(true);
         GC.SuppressFinalize(this);
     }
 
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!_disposed)
+        {
+            if (disposing)
+            {
+                // PlotModel не реализует IDisposable в OxyPlot
+                // Просто обнуляем ссылки
+                NormsPlotModel = null;
+                DeviationsPlotModel = null;
+                Routes.Clear();
+            }
+
+            _disposed = true;
+        }
+    }
+
     #endregion
+}
+
+/// <summary>
+/// Простая реализация ICommand для синхронных операций
+/// </summary>
+public class RelayCommand : ICommand
+{
+    private readonly Action _execute;
+    private readonly Func<bool>? _canExecute;
+
+    public RelayCommand(Action execute, Func<bool>? canExecute = null)
+    {
+        _execute = execute ?? throw new ArgumentNullException(nameof(execute));
+        _canExecute = canExecute;
+    }
+
+    public event EventHandler? CanExecuteChanged
+    {
+        add { CommandManager.RequerySuggested += value; }
+        remove { CommandManager.RequerySuggested -= value; }
+    }
+
+    public bool CanExecute(object? parameter) => _canExecute?.Invoke() ?? true;
+    public void Execute(object? parameter) => _execute();
+}
+
+/// <summary>
+/// Реализация ICommand для асинхронных операций
+/// </summary>
+public class AsyncRelayCommand : ICommand
+{
+    private readonly Func<Task> _execute;
+    private readonly Func<bool>? _canExecute;
+    private bool _isExecuting;
+
+    public AsyncRelayCommand(Func<Task> execute, Func<bool>? canExecute = null)
+    {
+        _execute = execute ?? throw new ArgumentNullException(nameof(execute));
+        _canExecute = canExecute;
+    }
+
+    public event EventHandler? CanExecuteChanged
+    {
+        add { CommandManager.RequerySuggested += value; }
+        remove { CommandManager.RequerySuggested -= value; }
+    }
+
+    public bool CanExecute(object? parameter) => !_isExecuting && (_canExecute?.Invoke() ?? true);
+
+    public async void Execute(object? parameter)
+    {
+        if (_isExecuting) return;
+
+        _isExecuting = true;
+        CommandManager.InvalidateRequerySuggested();
+
+        try
+        {
+            await _execute();
+        }
+        finally
+        {
+            _isExecuting = false;
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
 }

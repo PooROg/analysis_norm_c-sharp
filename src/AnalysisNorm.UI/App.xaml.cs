@@ -1,50 +1,54 @@
-using Microsoft.Extensions.Configuration;
+using System.IO;
+using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Serilog;
-using System.IO;
-using System.Text;
-using System.Windows;
+using Microsoft.Extensions.Logging; // ИСПРАВЛЕНО: добавлен недостающий using
+using Microsoft.Extensions.Configuration;
 using AnalysisNorm.Services;
-using AnalysisNorm.UI.ViewModels;
 using AnalysisNorm.Data;
-using Microsoft.EntityFrameworkCore;
+using AnalysisNorm.UI.Windows;
+using AnalysisNorm.UI.ViewModels;
+using Serilog;
 
 namespace AnalysisNorm.UI;
 
 /// <summary>
-/// WPF Application entry point с полной Dependency Injection конфигурацией
-/// Аналог Python main.py с современной архитектурой .NET и MVVM паттерном
+/// Главный класс приложения WPF с поддержкой DI и логирования
 /// </summary>
 public partial class App : Application
 {
+    #region Private Fields
+
     private IHost? _host;
-    private ILogger? _logger;
+    private ILogger<App>? _logger; // ИСПРАВЛЕНО: правильный тип ILogger<T>
+
+    #endregion
+
+    #region Application Lifecycle
 
     /// <summary>
-    /// Инициализация приложения - аналог Python main() функции
-    /// Настраивает DI контейнер, логирование и конфигурацию
+    /// ИСПРАВЛЕНО: Инициализация приложения при запуске
     /// </summary>
-    protected override async void OnStartup(StartupEventArgs e)
+    protected override void OnStartup(StartupEventArgs e)
     {
         try
         {
-            // Настраиваем кодировку для корректной работы с русскими файлами - аналог Python encoding setup
-            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-            
-            // Создаем и запускаем хост с DI контейнером
+            // Инициализируем Serilog до создания хоста
+            InitializeSerilog();
+
+            // Создаем и запускаем хост
             _host = CreateHostBuilder(e.Args).Build();
-            await _host.StartAsync();
+            _host.Start();
 
-            // Получаем logger после инициализации DI
+            // Получаем логгер после инициализации DI
             _logger = _host.Services.GetRequiredService<ILogger<App>>();
-            _logger.LogInformation("=== АНАЛИЗАТОР НОРМ РАСХОДА ЭЛЕКТРОЭНЕРГИИ РЖД ===");
-            _logger.LogInformation("Приложение запущено успешно");
+            _logger.LogInformation("Приложение успешно запущено"); // ИСПРАВЛЕНО: используем метод расширения
+            _logger.LogInformation($"Версия приложения: {GetApplicationVersion()}");
 
-            // Инициализируем базу данных
-            await InitializeDatabaseAsync();
+            // Инициализируем материальную тему
+            InitializeMaterialDesign();
 
-            // Создаем и отображаем главное окно
+            // Создаем и показываем главное окно
             var mainWindow = _host.Services.GetRequiredService<MainWindow>();
             mainWindow.Show();
 
@@ -52,190 +56,386 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            // Критическая ошибка при запуске
-            var message = $"Критическая ошибка при запуске приложения:\n\n{ex.Message}\n\nДетали:\n{ex}";
-            MessageBox.Show(message, "Ошибка запуска", MessageBoxButton.OK, MessageBoxImage.Error);
-            
-            Current.Shutdown(1);
-        }
-    }
+            // Логируем критическую ошибку
+            Log.Fatal(ex, "Критическая ошибка при запуске приложения");
 
-    /// <summary>
-    /// Корректное завершение работы приложения - аналог Python cleanup
-    /// </summary>
-    protected override async void OnExit(ExitEventArgs e)
-    {
-        try
-        {
-            _logger?.LogInformation("Завершение работы приложения...");
-            
-            if (_host != null)
-            {
-                await _host.StopAsync(TimeSpan.FromSeconds(5));
-                _host.Dispose();
-            }
-            
-            Log.CloseAndFlush();
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Ошибка при завершении: {ex}");
+            MessageBox.Show(
+                $"Критическая ошибка при запуске приложения:\n\n{ex.Message}\n\nПриложение будет закрыто.",
+                "Ошибка запуска",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+
+            Shutdown(-1);
         }
         finally
         {
-            base.OnExit(e);
+            _logger?.LogInformation("Инициализация приложения завершена");
         }
     }
 
     /// <summary>
-    /// Создает и настраивает хост приложения с DI контейнером
-    /// Аналог Python dependency setup, но с современной архитектурой .NET
+    /// ИСПРАВЛЕНО: Завершение работы приложения
     /// </summary>
-    private static IHostBuilder CreateHostBuilder(string[] args) =>
-        Host.CreateDefaultBuilder(args)
-            .UseSerilog((context, configuration) =>
-            {
-                // Конфигурация Serilog - аналог Python logging setup
-                configuration
-                    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
-                    .WriteTo.File(
-                        path: Path.Combine("logs", "analysis_norm-.log"),
-                        rollingInterval: RollingInterval.Day,
-                        retainedFileCountLimit: 7,
-                        outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss} {Level:u3}] {SourceContext} - {Message:lj}{NewLine}{Exception}")
-                    .MinimumLevel.Information()
-                    .MinimumLevel.Override("Microsoft", Serilog.Events.LogEventLevel.Warning)
-                    .MinimumLevel.Override("System", Serilog.Events.LogEventLevel.Warning)
-                    .Enrich.FromLogContext();
-            })
-            .ConfigureAppConfiguration((context, config) =>
-            {
-                // Конфигурация приложения - аналог Python config.py
-                config.SetBasePath(Directory.GetCurrentDirectory())
-                      .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-                      .AddJsonFile($"appsettings.{context.HostingEnvironment.EnvironmentName}.json", optional: true)
-                      .AddEnvironmentVariables()
-                      .AddCommandLine(args);
-            })
-            .ConfigureServices((context, services) =>
-            {
-                // Регистрация всех сервисов - аналог Python modules import
-                ConfigureServices(services, context.Configuration);
-            })
-            .UseConsoleLifetime();
-
-    /// <summary>
-    /// Настраивает DI контейнер со всеми сервисами
-    /// Полный аналог Python import statements и объектов
-    /// </summary>
-    private static void ConfigureServices(IServiceCollection services, IConfiguration configuration)
-    {
-        // === БАЗОВЫЕ СЕРВИСЫ ===
-        
-        // Entity Framework и база данных - аналог Python database setup
-        services.AddDbContext<AnalysisNormDbContext>(options =>
-        {
-            var connectionString = configuration.GetConnectionString("DefaultConnection") 
-                                  ?? "Data Source=analysis_norm.db";
-            options.UseSqlite(connectionString);
-        });
-
-        // Регистрация всех бизнес-сервисов из ServiceConfiguration
-        services.AddAnalysisNormServices(configuration);
-
-        // === WPF КОМПОНЕНТЫ ===
-        
-        // Регистрация основных окон и ViewModels
-        services.AddTransient<MainWindow>();
-        services.AddTransient<MainWindowViewModel>();
-        
-        // Регистрация окон графиков и аналитики
-        services.AddTransient<PlotWindow>();
-        services.AddTransient<PlotWindowViewModel>();
-        services.AddTransient<RouteStatisticsWindow>();
-        services.AddTransient<RouteStatisticsViewModel>();
-        services.AddTransient<LocomotiveFilterWindow>();
-        services.AddTransient<LocomotiveFilterViewModel>();
-        
-        // Регистрация UserControls
-        services.AddTransient<Controls.FileSectionControl>();
-        services.AddTransient<Controls.ControlSectionControl>();
-        services.AddTransient<Controls.VisualizationSectionControl>();
-
-        // === ДОПОЛНИТЕЛЬНЫЕ СЕРВИСЫ ===
-        
-        // LoggerFactory для создания логгеров в ViewModel'ах
-        services.AddSingleton<ILoggerFactory>(provider => provider.GetService<ILoggerFactory>()!);
-        
-        // HTTP клиент для будущих веб-запросов (если понадобится)
-        services.AddHttpClient();
-        
-        // Конфигурация как сервис
-        services.AddSingleton(configuration);
-        
-        // Фабрики и хелперы
-        services.AddSingleton<IServiceProvider>(provider => provider);
-        
-        // Логирование
-        services.AddLogging();
-    }
-
-    /// <summary>
-    /// Инициализирует базу данных при первом запуске
-    /// Аналог Python database setup и migration
-    /// </summary>
-    private async Task InitializeDatabaseAsync()
+    protected override void OnExit(ExitEventArgs e)
     {
         try
         {
-            using var scope = _host!.Services.CreateScope();
-            var dbContext = scope.ServiceProvider.GetRequiredService<AnalysisNormDbContext>();
-            
-            _logger?.LogInformation("Инициализация базы данных...");
-            
-            // Создаем базу данных если её нет
-            await dbContext.Database.EnsureCreatedAsync();
-            
-            // Выполняем миграции если есть
-            var pendingMigrations = await dbContext.Database.GetPendingMigrationsAsync();
-            if (pendingMigrations.Any())
-            {
-                _logger?.LogInformation("Применение миграций базы данных...");
-                await dbContext.Database.MigrateAsync();
-            }
-            
-            _logger?.LogInformation("База данных готова к работе");
+            _logger?.LogInformation("Начало завершения работы приложения");
+
+            // Сохраняем настройки пользователя
+            SaveUserSettings();
+
+            // Очищаем ресурсы
+            CleanupResources();
+
+            base.OnExit(e);
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Ошибка инициализации базы данных");
-            throw new InvalidOperationException("Не удалось инициализировать базу данных", ex);
+            _logger?.LogError(ex, "Ошибка при завершении работы приложения"); // ИСПРАВЛЕНО
+        }
+        finally
+        {
+            // Останавливаем хост
+            _host?.StopAsync(TimeSpan.FromSeconds(5)).Wait();
+            _host?.Dispose();
+
+            // Закрываем Serilog
+            Log.CloseAndFlush();
+        }
+    }
+
+    #endregion
+
+    #region Host Configuration
+
+    /// <summary>
+    /// Создает и настраивает хост приложения
+    /// </summary>
+    private static IHostBuilder CreateHostBuilder(string[] args)
+    {
+        return Host.CreateDefaultBuilder(args)
+            .UseSerilog() // Используем Serilog для логирования
+            .ConfigureAppConfiguration((context, config) =>
+            {
+                // Настраиваем конфигурацию
+                config.SetBasePath(Directory.GetCurrentDirectory());
+                config.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
+                config.AddJsonFile($"appsettings.{context.HostingEnvironment.EnvironmentName}.json",
+                    optional: true, reloadOnChange: true);
+                config.AddEnvironmentVariables();
+                config.AddCommandLine(args);
+            })
+            .ConfigureServices((context, services) =>
+            {
+                // Регистрируем сервисы
+                ConfigureServices(services, context.Configuration);
+            });
+    }
+
+    /// <summary>
+    /// Настройка служб dependency injection
+    /// </summary>
+    private static void ConfigureServices(IServiceCollection services, IConfiguration configuration)
+    {
+        // Регистрируем конфигурацию
+        services.AddSingleton(configuration);
+
+        // Регистрируем сервисы из других проектов
+        services.AddAnalysisNormServices(configuration);
+        services.AddAnalysisNormData(configuration);
+
+        // Регистрируем окна и view models
+        RegisterWindowsAndViewModels(services);
+
+        // Регистрируем UI сервисы
+        RegisterUIServices(services);
+    }
+
+    /// <summary>
+    /// Регистрация окон и view models
+    /// </summary>
+    private static void RegisterWindowsAndViewModels(IServiceCollection services)
+    {
+        // Главное окно
+        services.AddSingleton<MainWindow>();
+        services.AddSingleton<MainWindowViewModel>();
+
+        // Окна диалогов
+        services.AddTransient<PlotWindow>(); // ИСПРАВЛЕНО: удален лишний using
+        services.AddTransient<PlotWindowViewModel>();
+
+        services.AddTransient<RouteStatisticsWindow>(); // ИСПРАВЛЕНО
+        services.AddTransient<RouteStatisticsViewModel>(); // ИСПРАВЛЕНО
+
+        services.AddTransient<LocomotiveFilterWindow>(); // ИСПРАВЛЕНО
+        services.AddTransient<LocomotiveFilterViewModel>(); // ИСПРАВЛЕНО
+    }
+
+    /// <summary>
+    /// Регистрация UI сервисов
+    /// </summary>
+    private static void RegisterUIServices(IServiceCollection services)
+    {
+        // Добавляем HTTP client для веб-запросов
+        services.AddHttpClient();
+
+        // Сервисы для работы с файлами
+        services.AddSingleton<IDialogService, DialogService>();
+
+        // Фабрика логгеров для совместимости
+        services.AddSingleton<ILoggerFactory>(provider => // ИСПРАВЛЕНО: правильная регистрация
+            provider.GetRequiredService<ILoggerFactory>());
+    }
+
+    #endregion
+
+    #region Initialization
+
+    /// <summary>
+    /// Инициализация Serilog
+    /// </summary>
+    private static void InitializeSerilog()
+    {
+        var logPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "AnalysisNorm",
+            "Logs",
+            "app.log");
+
+        Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+
+        Log.Logger = new LoggerConfiguration()
+            .MinimumLevel.Information()
+            .MinimumLevel.Override("Microsoft", Serilog.Events.LogEventLevel.Warning)
+            .Enrich.FromLogContext()
+            .WriteTo.Console()
+            .WriteTo.File(
+                logPath,
+                rollingInterval: RollingInterval.Day,
+                retainedFileCountLimit: 30,
+                fileSizeLimitBytes: 50 * 1024 * 1024, // 50MB
+                rollOnFileSizeLimit: true)
+            .CreateLogger();
+    }
+
+    /// <summary>
+    /// Инициализация Material Design
+    /// </summary>
+    private void InitializeMaterialDesign()
+    {
+        try
+        {
+            _logger?.LogInformation("Инициализация Material Design темы"); // ИСПРАВЛЕНО
+
+            // Инициализация темы будет выполнена через XAML ресурсы
+            // в App.xaml файле, здесь только логируем событие
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Ошибка при инициализации Material Design"); // ИСПРАВЛЕНО
+        }
+    }
+
+    #endregion
+
+    #region Cleanup and Settings
+
+    /// <summary>
+    /// Сохранение пользовательских настроек
+    /// </summary>
+    private void SaveUserSettings()
+    {
+        try
+        {
+            _logger?.LogInformation("Сохранение пользовательских настроек"); // ИСПРАВЛЕНО
+
+            // Здесь будет логика сохранения настроек
+            // Properties.Settings.Default.Save();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Ошибка при сохранении пользовательских настроек"); // ИСПРАВЛЕНО
         }
     }
 
     /// <summary>
-    /// Глобальный обработчик необработанных исключений
-    /// Аналог Python global exception handler
+    /// Очистка ресурсов приложения
     /// </summary>
-    private void Application_DispatcherUnhandledException(object sender, 
+    private void CleanupResources()
+    {
+        try
+        {
+            _logger?.LogInformation("Очистка ресурсов приложения");
+
+            // Очищаем временные файлы
+            CleanupTempFiles();
+
+            // Закрываем подключения к БД
+            // (будет выполнено автоматически через DI контейнер)
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Ошибка при очистке ресурсов");
+        }
+    }
+
+    /// <summary>
+    /// Очистка временных файлов
+    /// </summary>
+    private static void CleanupTempFiles()
+    {
+        try
+        {
+            var tempPath = Path.Combine(Path.GetTempPath(), "AnalysisNorm");
+            if (Directory.Exists(tempPath))
+            {
+                Directory.Delete(tempPath, recursive: true);
+            }
+        }
+        catch
+        {
+            // Игнорируем ошибки очистки временных файлов
+        }
+    }
+
+    #endregion
+
+    #region Utilities
+
+    /// <summary>
+    /// Получает версию приложения
+    /// </summary>
+    private static string GetApplicationVersion()
+    {
+        var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+        var version = assembly.GetName().Version;
+        return version?.ToString() ?? "Unknown";
+    }
+
+    /// <summary>
+    /// Обработчик необработанных исключений
+    /// </summary>
+    private void Application_DispatcherUnhandledException(object sender,
         System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
     {
         try
         {
-            _logger?.LogError(e.Exception, "Необработанное исключение в UI потоке");
-            
-            var message = $"Произошла неожиданная ошибка:\n\n{e.Exception.Message}\n\n" +
-                         "Приложение может работать нестабильно. Рекомендуется перезапустить программу.";
-            
-            MessageBox.Show(message, "Неожиданная ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
-            
-            // Помечаем исключение как обработанное, чтобы приложение не закрылось
-            e.Handled = true;
+            _logger?.LogError(e.Exception, "Необработанное исключение в UI потоке"); // ИСПРАВЛЕНО
+
+            var result = MessageBox.Show(
+                $"Произошла неожиданная ошибка:\n\n{e.Exception.Message}\n\nПродолжить работу приложения?",
+                "Необработанная ошибка",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Error);
+
+            if (result == MessageBoxResult.No)
+            {
+                Shutdown(-1);
+            }
+            else
+            {
+                e.Handled = true;
+            }
         }
-        catch
+        catch (Exception ex)
         {
-            // Если даже обработчик ошибок дал сбой, просто завершаем приложение
-            Current.Shutdown(1);
+            // Критическая ошибка в обработчике ошибок
+            Log.Fatal(ex, "Критическая ошибка в обработчике исключений");
+            Shutdown(-1);
         }
+    }
+
+    #endregion
+}
+
+/// <summary>
+/// Интерфейс для работы с диалоговыми окнами
+/// </summary>
+public interface IDialogService
+{
+    /// <summary>
+    /// Показывает диалог выбора файла
+    /// </summary>
+    string? ShowOpenFileDialog(string filter = "", string title = "");
+
+    /// <summary>
+    /// Показывает диалог сохранения файла
+    /// </summary>
+    string? ShowSaveFileDialog(string filter = "", string title = "", string defaultFileName = "");
+
+    /// <summary>
+    /// Показывает диалог выбора папки
+    /// </summary>
+    string? ShowFolderBrowserDialog(string description = "");
+
+    /// <summary>
+    /// Показывает информационное сообщение
+    /// </summary>
+    void ShowMessage(string message, string title = "Информация");
+
+    /// <summary>
+    /// Показывает сообщение с подтверждением
+    /// </summary>
+    bool ShowConfirmation(string message, string title = "Подтверждение");
+
+    /// <summary>
+    /// Показывает сообщение об ошибке
+    /// </summary>
+    void ShowError(string message, string title = "Ошибка");
+}
+
+/// <summary>
+/// Реализация сервиса диалогов для WPF
+/// </summary>
+public class DialogService : IDialogService
+{
+    public string? ShowOpenFileDialog(string filter = "", string title = "")
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Filter = filter,
+            Title = title
+        };
+
+        return dialog.ShowDialog() == true ? dialog.FileName : null;
+    }
+
+    public string? ShowSaveFileDialog(string filter = "", string title = "", string defaultFileName = "")
+    {
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Filter = filter,
+            Title = title,
+            FileName = defaultFileName
+        };
+
+        return dialog.ShowDialog() == true ? dialog.FileName : null;
+    }
+
+    public string? ShowFolderBrowserDialog(string description = "")
+    {
+        var dialog = new System.Windows.Forms.FolderBrowserDialog
+        {
+            Description = description
+        };
+
+        return dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK ? dialog.SelectedPath : null;
+    }
+
+    public void ShowMessage(string message, string title = "Информация")
+    {
+        MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    public bool ShowConfirmation(string message, string title = "Подтверждение")
+    {
+        var result = MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Question);
+        return result == MessageBoxResult.Yes;
+    }
+
+    public void ShowError(string message, string title = "Ошибка")
+    {
+        MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Error);
     }
 }

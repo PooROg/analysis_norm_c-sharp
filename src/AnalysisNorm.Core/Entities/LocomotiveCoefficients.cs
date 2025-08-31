@@ -1,117 +1,395 @@
 using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-using System.Text.RegularExpressions;
+using System.Text.Json.Serialization;
 
 namespace AnalysisNorm.Core.Entities;
 
 /// <summary>
-/// Коэффициент расхода локомотива
-/// Соответствует структуре из Python coefficients.py
+/// Коэффициент локомотива для расчета нормативного расхода
 /// </summary>
-[Table("LocomotiveCoefficients")]
 public class LocomotiveCoefficient
 {
-    [Key]
-    public int Id { get; set; }
+    #region Primary Properties
 
     /// <summary>
-    /// Оригинальная серия локомотива (как в файле)
+    /// Уникальный идентификатор коэффициента
+    /// </summary>
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+
+    /// <summary>
+    /// Серия локомотива
     /// </summary>
     [Required]
-    [StringLength(50)]
-    public string Series { get; set; } = string.Empty;
+    public string LocomotiveSeries { get; set; } = string.Empty;
 
     /// <summary>
-    /// Нормализованная серия (только буквы/цифры, верхний регистр)
-    /// Соответствует normalize_series из Python
+    /// Номер локомотива (может быть null для общих коэффициентов серии)
+    /// </summary>
+    public int? LocomotiveNumber { get; set; }
+
+    #endregion
+
+    #region Coefficient Data - ИСПРАВЛЕНО
+
+    /// <summary>
+    /// Значение коэффициента - ИСПРАВЛЕНО: добавлено недостающее свойство
     /// </summary>
     [Required]
-    [StringLength(50)]
-    public string SeriesNormalized { get; set; } = string.Empty;
+    [Range(0.1, 10.0, ErrorMessage = "Коэффициент должен быть в диапазоне от 0.1 до 10.0")]
+    public decimal Value { get; set; } = 1.0m;
 
     /// <summary>
-    /// Номер локомотива
+    /// Базовый коэффициент расхода
     /// </summary>
-    [Required]
-    public int Number { get; set; }
+    [Range(0.1, 5.0)]
+    public decimal BaseCoefficient { get; set; } = 1.0m;
 
     /// <summary>
-    /// Коэффициент расхода (значение для корректировки фактического расхода)
+    /// Коэффициент для тяги
     /// </summary>
-    [Column(TypeName = "decimal(18,6)")]
-    public decimal Coefficient { get; set; }
+    [Range(0.5, 2.0)]
+    public decimal TractionCoefficient { get; set; } = 1.0m;
 
     /// <summary>
-    /// Отклонение от нормы в процентах
-    /// (coefficient - 1.0) * 100.0
+    /// Коэффициент для рекуперации (если применимо)
     /// </summary>
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal DeviationPercent { get; set; }
+    [Range(0.0, 1.0)]
+    public decimal RegenerationCoefficient { get; set; } = 0.0m;
+
+    #endregion
+
+    #region Technical Specifications
 
     /// <summary>
-    /// Общая работа локомотива (для фильтрации по min_work_threshold)
+    /// Тип локомотива (электровоз, тепловоз, электропоезд)
     /// </summary>
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal WorkTotal { get; set; }
+    public LocomotiveType Type { get; set; } = LocomotiveType.Electric;
 
-    // === СИСТЕМНЫЕ ПОЛЯ ===
+    /// <summary>
+    /// Мощность локомотива в кВт
+    /// </summary>
+    [Range(100, 20000)]
+    public decimal? Power { get; set; }
+
+    /// <summary>
+    /// Масса локомотива в тоннах
+    /// </summary>
+    [Range(20, 200)]
+    public decimal? Mass { get; set; }
+
+    /// <summary>
+    /// Максимальная скорость в км/ч
+    /// </summary>
+    [Range(20, 300)]
+    public decimal? MaxSpeed { get; set; }
+
+    #endregion
+
+    #region Validity and Application
+
+    /// <summary>
+    /// Дата начала действия коэффициента
+    /// </summary>
+    public DateTime ValidFrom { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Дата окончания действия коэффициента
+    /// </summary>
+    public DateTime? ValidTo { get; set; }
+
+    /// <summary>
+    /// Признак активности коэффициента
+    /// </summary>
+    public bool IsActive { get; set; } = true;
+
+    /// <summary>
+    /// Условия применения коэффициента
+    /// </summary>
+    public string? ApplicationConditions { get; set; }
+
+    #endregion
+
+    #region Quality and Source Information
+
+    /// <summary>
+    /// Источник данных коэффициента
+    /// </summary>
+    public string? DataSource { get; set; }
+
+    /// <summary>
+    /// Уровень достоверности (от 1 до 5)
+    /// </summary>
+    [Range(1, 5)]
+    public int ReliabilityLevel { get; set; } = 3;
+
+    /// <summary>
+    /// Количество использований коэффициента
+    /// </summary>
+    public int UsageCount { get; set; } = 0;
+
+    /// <summary>
+    /// Последнее использование
+    /// </summary>
+    public DateTime? LastUsed { get; set; }
+
+    #endregion
+
+    #region Metadata
+
+    /// <summary>
+    /// Дата создания записи
+    /// </summary>
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime? UpdatedAt { get; set; }
 
     /// <summary>
-    /// Источник данных коэффициента: "coefficient" или "percent"
+    /// Дата последнего обновления
     /// </summary>
-    [StringLength(20)]
-    public string? Source { get; set; }
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     /// <summary>
-    /// Нормализует название серии локомотива
-    /// Соответствует normalize_series из Python coefficients.py
+    /// Пользователь, создавший запись
     /// </summary>
-    /// <param name="series">Исходная серия</param>
-    /// <returns>Нормализованная серия (только буквы/цифры, верхний регистр)</returns>
-    public static string NormalizeSeries(string series)
+    public string? CreatedBy { get; set; }
+
+    /// <summary>
+    /// Комментарии к коэффициенту
+    /// </summary>
+    public string? Comments { get; set; }
+
+    /// <summary>
+    /// Дополнительные метаданные в формате JSON
+    /// </summary>
+    public string? Metadata { get; set; }
+
+    #endregion
+
+    #region Computed Properties
+
+    /// <summary>
+    /// Полное наименование локомотива
+    /// </summary>
+    [JsonIgnore]
+    public string FullName => LocomotiveNumber.HasValue
+        ? $"{LocomotiveSeries}-{LocomotiveNumber}"
+        : $"{LocomotiveSeries} (серия)";
+
+    /// <summary>
+    /// Признак валидности коэффициента
+    /// </summary>
+    [JsonIgnore]
+    public bool IsValid
     {
-        if (string.IsNullOrEmpty(series)) return string.Empty;
-
-        // Убираем все кроме букв и цифр, приводим к верхнему регистру
-        var normalized = Regex.Replace(series.ToUpper(), @"[^А-ЯA-Z0-9]", string.Empty);
-        return normalized;
+        get
+        {
+            var now = DateTime.UtcNow;
+            return IsActive &&
+                   ValidFrom <= now &&
+                   (ValidTo == null || ValidTo >= now) &&
+                   Value > 0;
+        }
     }
 
     /// <summary>
-    /// Обновляет нормализованную серию и отклонение при изменении основных свойств
+    /// Эффективный коэффициент с учетом всех составляющих
     /// </summary>
-    public void UpdateCalculatedFields()
+    [JsonIgnore]
+    public decimal EffectiveCoefficient
     {
-        SeriesNormalized = NormalizeSeries(Series);
-        DeviationPercent = (Coefficient - 1.0m) * 100.0m;
+        get
+        {
+            var effective = Value * BaseCoefficient * TractionCoefficient;
+
+            // Учитываем рекуперацию для снижения расхода
+            if (Type == LocomotiveType.Electric && RegenerationCoefficient > 0)
+            {
+                effective *= (1 - RegenerationCoefficient * 0.1m); // 10% экономии на каждые 0.1 коэф. рекуперации
+            }
+
+            return effective;
+        }
     }
-    
-        /// <summary>
-    /// Фактическая работа (недостающее свойство)
-    /// </summary>
-    public decimal? WorkFact { get; set; }
+
+    #endregion
+
+    #region Methods
 
     /// <summary>
-    /// Нормативная работа (недостающее свойство)
+    /// Проверяет применимость коэффициента для конкретного маршрута
     /// </summary>
-    public decimal? WorkNorm { get; set; }
+    public bool IsApplicableToRoute(Route route)
+    {
+        if (!IsValid) return false;
+
+        // Проверяем соответствие серии и номера локомотива
+        if (route.LocomotiveSeries != LocomotiveSeries) return false;
+
+        if (LocomotiveNumber.HasValue && route.LocomotiveNumber != LocomotiveNumber) return false;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Вычисляет нормативный расход для маршрута
+    /// </summary>
+    public decimal CalculateNormativeConsumption(Route route, decimal baseNorm)
+    {
+        if (!IsApplicableToRoute(route))
+            throw new InvalidOperationException("Коэффициент не применим к данному маршруту");
+
+        // Базовый расчет с учетом эффективного коэффициента
+        var normative = baseNorm * EffectiveCoefficient;
+
+        // Корректировка по массе состава
+        if (route.TrainMass > 0)
+        {
+            var massCoefficient = 1 + (route.TrainMass - 1000) / 10000; // Увеличение на 1% на каждые 100 тонн свыше 1000
+            normative *= Math.Max(0.5m, Math.Min(2.0m, massCoefficient)); // Ограничиваем коэффициент
+        }
+
+        return Math.Max(0, normative);
+    }
+
+    /// <summary>
+    /// Отмечает использование коэффициента
+    /// </summary>
+    public void MarkAsUsed()
+    {
+        UsageCount++;
+        LastUsed = DateTime.UtcNow;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    #endregion
+
+    #region Object Overrides
+
+    public override string ToString()
+    {
+        return $"{FullName}: {Value:F3} ({(IsValid ? "активен" : "неактивен")})";
+    }
+
+    public override bool Equals(object? obj)
+    {
+        return obj is LocomotiveCoefficient other && Id.Equals(other.Id, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public override int GetHashCode()
+    {
+        return Id.GetHashCode(StringComparison.OrdinalIgnoreCase);
+    }
+
+    #endregion
+
+    #region Factory Methods
+
+    /// <summary>
+    /// Создает коэффициент для серии локомотивов
+    /// </summary>
+    public static LocomotiveCoefficient CreateForSeries(string series, decimal value, LocomotiveType type = LocomotiveType.Electric)
+    {
+        return new LocomotiveCoefficient
+        {
+            Id = Guid.NewGuid().ToString(),
+            LocomotiveSeries = series,
+            Value = value,
+            Type = type,
+            ValidFrom = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+    }
+
+    /// <summary>
+    /// Создает коэффициент для конкретного локомотива
+    /// </summary>
+    public static LocomotiveCoefficient CreateForLocomotive(string series, int number, decimal value, LocomotiveType type = LocomotiveType.Electric)
+    {
+        return new LocomotiveCoefficient
+        {
+            Id = Guid.NewGuid().ToString(),
+            LocomotiveSeries = series,
+            LocomotiveNumber = number,
+            Value = value,
+            Type = type,
+            ValidFrom = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+    }
+
+    #endregion
 }
 
 /// <summary>
-/// Статистика коэффициентов по серии
-/// Соответствует get_statistics из Python coefficients.py
+/// Тип локомотива
 /// </summary>
-public class CoefficientStatistics
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum LocomotiveType
 {
-    public int TotalLocomotives { get; set; }
-    public int SeriesCount { get; set; }
-    public decimal AvgCoefficient { get; set; }
-    public decimal MinCoefficient { get; set; }
-    public decimal MaxCoefficient { get; set; }
-    public decimal AvgDeviationPercent { get; set; }
-    public int LocomotivesAboveNorm { get; set; }
-    public int LocomotivesBelowNorm { get; set; }
-    public int LocomotivesAtNorm { get; set; }
+    /// <summary>
+    /// Электровоз
+    /// </summary>
+    Electric = 0,
+
+    /// <summary>
+    /// Тепловоз
+    /// </summary>
+    Diesel = 1,
+
+    /// <summary>
+    /// Электропоезд
+    /// </summary>
+    ElectricTrain = 2,
+
+    /// <summary>
+    /// Дизельпоезд
+    /// </summary>
+    DieselTrain = 3,
+
+    /// <summary>
+    /// Гибридный
+    /// </summary>
+    Hybrid = 4,
+
+    /// <summary>
+    /// Неизвестный тип
+    /// </summary>
+    Unknown = 99
+}
+
+/// <summary>
+/// Расширения для LocomotiveType
+/// </summary>
+public static class LocomotiveTypeExtensions
+{
+    /// <summary>
+    /// Получает описание типа локомотива
+    /// </summary>
+    public static string GetDescription(this LocomotiveType type)
+    {
+        return type switch
+        {
+            LocomotiveType.Electric => "Электровоз",
+            LocomotiveType.Diesel => "Тепловоз",
+            LocomotiveType.ElectricTrain => "Электропоезд",
+            LocomotiveType.DieselTrain => "Дизельпоезд",
+            LocomotiveType.Hybrid => "Гибридный",
+            _ => "Неизвестный тип"
+        };
+    }
+
+    /// <summary>
+    /// Проверяет использует ли тип электрическую тягу
+    /// </summary>
+    public static bool IsElectric(this LocomotiveType type)
+    {
+        return type is LocomotiveType.Electric or LocomotiveType.ElectricTrain or LocomotiveType.Hybrid;
+    }
+
+    /// <summary>
+    /// Проверяет поддерживает ли тип рекуперацию
+    /// </summary>
+    public static bool SupportsRegeneration(this LocomotiveType type)
+    {
+        return IsElectric(type);
+    }
 }
