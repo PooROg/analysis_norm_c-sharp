@@ -3,139 +3,257 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes">
 
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
+    <materialDesign:Card Padding="16" 
+                        Margin="8"
+                        materialDesign:ElevationAssist.Elevation="Dp2">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
 
-        <!-- Заголовок секции -->
-        <TextBlock Grid.Row="0" 
-                   Text="Визуализация" 
-                   FontSize="16" FontWeight="SemiBold" 
-                   Margin="0,0,0,16"/>
+            <!-- Заголовок секции -->
+            <TextBlock Grid.Row="0"
+                       Text="Визуализация и экспорт"
+                       Style="{StaticResource MaterialDesignHeadline6TextBlock}"
+                       Margin="0,0,0,16"/>
 
-        <!-- Кнопка открытия графика - аналог Python view_plot_btn -->
-        <Button Grid.Row="1"
-                Content="Открыть график в окне"
-                Command="{Binding DataContext.OpenPlotCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                Style="{StaticResource MaterialDesignRaisedButton}"
-                materialDesign:ButtonAssist.CornerRadius="4"
-                Padding="20,10"
-                FontWeight="Medium"
-                Margin="0,0,0,16">
-            <Button.ContentTemplate>
-                <DataTemplate>
-                    <StackPanel Orientation="Horizontal">
+            <!-- Настройки визуализации -->
+            <StackPanel Grid.Row="1" Margin="0,0,0,16">
+                <TextBlock Text="Параметры графиков" 
+                          Style="{StaticResource MaterialDesignBody1TextBlock}"
+                          Margin="0,0,0,8"/>
+                
+                <UniformGrid Columns="2">
+                    <CheckBox x:Name="ShowTrendLineCheckBox"
+                              Content="Показать линию тренда"
+                              IsChecked="{Binding ShowTrendLine}"
+                              Style="{StaticResource MaterialDesignCheckBox}"
+                              Margin="0,4,8,4"/>
+                              
+                    <CheckBox x:Name="ShowConfidenceIntervalCheckBox"
+                              Content="Доверительный интервал"
+                              IsChecked="{Binding ShowConfidenceInterval}"
+                              Style="{StaticResource MaterialDesignCheckBox}"
+                              Margin="8,4,0,4"/>
+                              
+                    <CheckBox x:Name="ShowGridLinesCheckBox"
+                              Content="Сетка координат"
+                              IsChecked="{Binding ShowGridLines}"
+                              Style="{StaticResource MaterialDesignCheckBox}"
+                              Margin="0,4,8,4"/>
+                              
+                    <CheckBox x:Name="ShowLegendsCheckBox"
+                              Content="Легенда графика"
+                              IsChecked="{Binding ShowLegends}"
+                              Style="{StaticResource MaterialDesignCheckBox}"
+                              Margin="8,4,0,4"/>
+                </UniformGrid>
+            </StackPanel>
+
+            <!-- Кнопки создания визуализаций -->
+            <StackPanel Grid.Row="2" Orientation="Vertical" Margin="0,0,0,16">
+                <TextBlock Text="Типы визуализации" 
+                          Style="{StaticResource MaterialDesignBody1TextBlock}"
+                          Margin="0,0,0,8"/>
+                
+                <UniformGrid Columns="2" Rows="2">
+                    <!-- График расхода электроэнергии -->
+                    <Button x:Name="CreateConsumptionChartButton"
+                            Style="{StaticResource MaterialDesignRaisedButton}"
+                            materialDesign:ButtonAssist.CornerRadius="4"
+                            materialDesign:ElevationAssist.Elevation="Dp2"
+                            Command="{Binding CreateConsumptionChartCommand}"
+                            Margin="0,0,4,4"
+                            Padding="12,8">
+                        <Button.Content>
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="ChartLine" 
+                                                       Width="18" 
+                                                       Height="18" 
+                                                       Margin="0,0,8,0"/>
+                                <StackPanel>
+                                    <TextBlock Text="График расхода" FontWeight="SemiBold"/>
+                                    <TextBlock Text="Нормы vs факт" FontSize="11" Opacity="0.7"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Button.Content>
+                    </Button>
+
+                    <!-- Диаграмма отклонений -->
+                    <Button x:Name="CreateDeviationChartButton"
+                            Style="{StaticResource MaterialDesignRaisedButton}"
+                            materialDesign:ButtonAssist.CornerRadius="4"
+                            materialDesign:ElevationAssist.Elevation="Dp2"
+                            Command="{Binding CreateDeviationChartCommand}"
+                            Margin="4,0,0,4"
+                            Padding="12,8">
+                        <Button.Content>
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="ChartBar" 
+                                                       Width="18" 
+                                                       Height="18" 
+                                                       Margin="0,0,8,0"/>
+                                <StackPanel>
+                                    <TextBlock Text="Отклонения" FontWeight="SemiBold"/>
+                                    <TextBlock Text="По участкам" FontSize="11" Opacity="0.7"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Button.Content>
+                    </Button>
+
+                    <!-- Статистика по сериям -->
+                    <Button x:Name="CreateSeriesStatsButton"
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                            materialDesign:ButtonAssist.CornerRadius="4"
+                            Command="{Binding CreateSeriesStatsCommand}"
+                            Margin="0,4,4,0"
+                            Padding="12,8">
+                        <Button.Content>
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="ChartPie" 
+                                                       Width="18" 
+                                                       Height="18" 
+                                                       Margin="0,0,8,0"/>
+                                <StackPanel>
+                                    <TextBlock Text="По сериям" FontWeight="SemiBold"/>
+                                    <TextBlock Text="Статистика" FontSize="11" Opacity="0.7"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Button.Content>
+                    </Button>
+
+                    <!-- Тепловая карта -->
+                    <Button x:Name="CreateHeatmapButton"
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                            materialDesign:ButtonAssist.CornerRadius="4"
+                            Command="{Binding CreateHeatmapCommand}"
+                            Margin="4,4,0,0"
+                            Padding="12,8">
+                        <Button.Content>
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="GridLarge" 
+                                                       Width="18" 
+                                                       Height="18" 
+                                                       Margin="0,0,8,0"/>
+                                <StackPanel>
+                                    <TextBlock Text="Тепловая карта" FontWeight="SemiBold"/>
+                                    <TextBlock Text="Эффективность" FontSize="11" Opacity="0.7"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Button.Content>
+                    </Button>
+                </UniformGrid>
+            </StackPanel>
+
+            <!-- Предварительный просмотр графика -->
+            <Border Grid.Row="3"
+                    BorderBrush="{DynamicResource MaterialDesignDivider}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Margin="0,0,0,16"
+                    Background="{DynamicResource MaterialDesignCardBackground}">
+                
+                <Grid>
+                    <!-- Placeholder когда нет данных -->
+                    <StackPanel x:Name="NoDataPlaceholder"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Visibility="{Binding HasChartData, Converter={StaticResource InvertBooleanToVisibilityConverter}}">
                         <materialDesign:PackIcon Kind="ChartLineVariant" 
-                                                Width="20" Height="20"
-                                                VerticalAlignment="Center"
-                                                Margin="0,0,8,0"/>
-                        <TextBlock Text="{Binding}" VerticalAlignment="Center"/>
+                                               Width="64" 
+                                               Height="64" 
+                                               Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                               Margin="0,0,0,8"/>
+                        <TextBlock Text="Выберите данные для создания графика" 
+                                  Style="{StaticResource MaterialDesignBody2TextBlock}"
+                                  Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                  TextAlignment="Center"/>
                     </StackPanel>
-                </DataTemplate>
-            </Button.ContentTemplate>
-        </Button>
 
-        <!-- Группы управляющих кнопок -->
-        <StackPanel Grid.Row="2" Margin="0,0,0,16">
-            
-            <!-- Управление нормами - аналог Python norms_management_section -->
-            <materialDesign:Card materialDesign:ElevationAssist.Elevation="Dp1" 
-                                 Padding="12" Margin="0,0,0,12">
-                <StackPanel>
-                    <TextBlock Text="Управление нормами" 
-                               FontWeight="SemiBold" 
-                               Margin="0,0,0,8"/>
-                    
-                    <Button Content="Информация о хранилище норм"
-                            Command="{Binding DataContext.ShowNormStorageInfoCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                            Style="{StaticResource MaterialDesignOutlinedButton}"
-                            HorizontalAlignment="Stretch"
-                            Padding="12,6"
-                            Margin="0,0,0,6">
-                        <Button.ContentTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal">
-                                    <materialDesign:PackIcon Kind="InformationOutline" 
-                                                            Width="16" Height="16"
-                                                            VerticalAlignment="Center"
-                                                            Margin="0,0,6,0"/>
-                                    <TextBlock Text="{Binding}" VerticalAlignment="Center" FontSize="12"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </Button.ContentTemplate>
-                    </Button>
-                    
-                    <Button Content="Валидировать нормы"
-                            Command="{Binding DataContext.ValidateNormsCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                            Style="{StaticResource MaterialDesignOutlinedButton}"
-                            HorizontalAlignment="Stretch"
-                            Padding="12,6">
-                        <Button.ContentTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal">
-                                    <materialDesign:PackIcon Kind="CheckCircleOutline" 
-                                                            Width="16" Height="16"
-                                                            VerticalAlignment="Center"
-                                                            Margin="0,0,6,0"/>
-                                    <TextBlock Text="{Binding}" VerticalAlignment="Center" FontSize="12"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </Button.ContentTemplate>
-                    </Button>
-                </StackPanel>
-            </materialDesign:Card>
+                    <!-- Предварительный просмотр -->
+                    <Image x:Name="ChartPreviewImage"
+                           Source="{Binding ChartPreviewSource}"
+                           Stretch="Uniform"
+                           Visibility="{Binding HasChartData, Converter={StaticResource BooleanToVisibilityConverter}}"
+                           Margin="8"/>
+                </Grid>
+            </Border>
 
-            <!-- Информация о данных - аналог Python data_info_section -->
-            <materialDesign:Card materialDesign:ElevationAssist.Elevation="Dp1" 
-                                 Padding="12">
-                <StackPanel>
-                    <TextBlock Text="Информация о данных" 
-                               FontWeight="SemiBold" 
-                               Margin="0,0,0,8"/>
-                    
-                    <Button Content="Статистика маршрутов"
-                            Command="{Binding DataContext.ShowRoutesStatisticsCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                            Style="{StaticResource MaterialDesignOutlinedButton}"
-                            HorizontalAlignment="Stretch"
-                            Padding="12,6">
-                        <Button.ContentTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal">
-                                    <materialDesign:PackIcon Kind="ChartBar" 
-                                                            Width="16" Height="16"
-                                                            VerticalAlignment="Center"
-                                                            Margin="0,0,6,0"/>
-                                    <TextBlock Text="{Binding}" VerticalAlignment="Center" FontSize="12"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </Button.ContentTemplate>
-                    </Button>
-                </StackPanel>
-            </materialDesign:Card>
-        </StackPanel>
+            <!-- Кнопки экспорта -->
+            <UniformGrid Grid.Row="4" Columns="4">
+                <Button x:Name="ExportExcelButton"
+                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                        Command="{Binding ExportToExcelCommand}"
+                        IsEnabled="{Binding HasAnalysisData}"
+                        Margin="0,0,4,0"
+                        Padding="8,6">
+                    <Button.Content>
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="FileExcel" 
+                                                   Width="16" 
+                                                   Height="16" 
+                                                   Margin="0,0,4,0"/>
+                            <TextBlock Text="Excel" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button.Content>
+                </Button>
 
-        <!-- Информационная область - аналог Python plot_info -->
-        <ScrollViewer Grid.Row="3" 
-                      VerticalScrollBarVisibility="Auto" 
-                      HorizontalScrollBarVisibility="Auto"
-                      Padding="0,0,4,0">
-            
-            <TextBox x:Name="PlotInfoTextBox"
-                     Text="{Binding PlotInfoText, Mode=OneWay}"
-                     IsReadOnly="True"
-                     TextWrapping="Wrap"
-                     AcceptsReturn="True"
-                     Background="Transparent"
-                     BorderThickness="1"
-                     BorderBrush="{DynamicResource MaterialDesignDivider}"
-                     FontFamily="Segoe UI"
-                     FontSize="12"
-                     Padding="12"
-                     VerticalContentAlignment="Top"/>
-        </ScrollViewer>
-    </Grid>
+                <Button x:Name="ExportPdfButton"
+                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                        Command="{Binding ExportToPdfCommand}"
+                        IsEnabled="{Binding HasAnalysisData}"
+                        Margin="4,0"
+                        Padding="8,6">
+                    <Button.Content>
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="FilePdfBox" 
+                                                   Width="16" 
+                                                   Height="16" 
+                                                   Margin="0,0,4,0"/>
+                            <TextBlock Text="PDF" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button.Content>
+                </Button>
+
+                <Button x:Name="ExportImageButton"
+                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                        Command="{Binding ExportToImageCommand}"
+                        IsEnabled="{Binding HasChartData}"
+                        Margin="4,0"
+                        Padding="8,6">
+                    <Button.Content>
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="FileImageOutline" 
+                                                   Width="16" 
+                                                   Height="16" 
+                                                   Margin="0,0,4,0"/>
+                            <TextBlock Text="PNG" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button.Content>
+                </Button>
+
+                <Button x:Name="PrintButton"
+                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                        Command="{Binding PrintCommand}"
+                        IsEnabled="{Binding HasAnalysisData}"
+                        Margin="4,0,0,0"
+                        Padding="8,6">
+                    <Button.Content>
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="Printer" 
+                                                   Width="16" 
+                                                   Height="16" 
+                                                   Margin="0,0,4,0"/>
+                            <TextBlock Text="Печать" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button.Content>
+                </Button>
+            </UniformGrid>
+        </Grid>
+    </materialDesign:Card>
+
 </UserControl>

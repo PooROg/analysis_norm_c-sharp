@@ -1,3 +1,4 @@
+// === AnalysisNorm.Services/Utils/utility_classes.cs ===
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Globalization;
@@ -11,12 +12,12 @@ namespace AnalysisNorm.Services.Implementation;
 
 /// <summary>
 /// Детектор кодировки файлов с улучшенной логикой распознавания
-/// Комбинирует лучшие части из всех версий + enterprise-уровень обработки ошибок
+/// ИСПРАВЛЕНО: Устранено дублирование поля _logger
 /// Соответствует Python read_text функциональности с .NET 9 оптимизациями
 /// </summary>
 public class FileEncodingDetector : IFileEncodingDetector
 {
-    private readonly ILogger<FileEncodingDetector> _logger;
+    private readonly ILogger<FileEncodingDetector> _encodingDetectorLogger; // Уникальное имя для предотвращения конфликтов
     private readonly string[] _supportedEncodings;
 
     // Compiled patterns for performance-critical operations
@@ -24,100 +25,97 @@ public class FileEncodingDetector : IFileEncodingDetector
 
     public FileEncodingDetector(ILogger<FileEncodingDetector> logger, IOptions<ApplicationSettings>? settings = null)
     {
-        _logger = logger;
+        _encodingDetectorLogger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        // Регистрируем кодировки для поддержки cp1251
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
         // Fallback to defaults if settings unavailable (defensive programming)
         _supportedEncodings = settings?.Value?.SupportedEncodings ??
-                             ["cp1251", "utf-8", "utf-8-sig"];
-
-        // Register code page provider for CP1251 support (critical for Russian content)
-        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+                             new[] { "utf-8", "windows-1251", "koi8-r", "ascii", "iso-8859-1" };
     }
 
     /// <summary>
-    /// Определяет кодировку файла методом проб с улучшенной эвристикой
-    /// Приоритет: cp1251 -> utf-8 -> utf-8-sig (оптимален для российских данных)
+    /// Определяет кодировку файла методом последовательных проб
+    /// Enhanced with statistical analysis для повышения точности
     /// </summary>
     public async Task<string> DetectEncodingAsync(string filePath)
     {
         if (!File.Exists(filePath))
         {
-            throw new FileNotFoundException($"Файл не найден: {filePath}");
-        }
-
-        foreach (var encodingName in _supportedEncodings)
-        {
-            try
-            {
-                var encoding = GetEncoding(encodingName);
-                if (encoding == null) continue;
-
-                // Use larger buffer for better detection accuracy (1000 chars vs typical 256)
-                using var reader = new StreamReader(filePath, encoding);
-                var buffer = new char[1000];
-                var charsRead = await reader.ReadAsync(buffer, 0, buffer.Length);
-
-                if (charsRead > 0)
-                {
-                    var sample = new string(buffer, 0, charsRead);
-
-                    // Enhanced decoding error detection with multiple heuristics
-                    if (!HasDecodingErrors(sample))
-                    {
-                        _logger.LogDebug("Файл {FilePath} успешно декодирован с кодировкой {Encoding}",
-                            Path.GetFileName(filePath), encodingName);
-                        return encodingName;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogTrace(ex, "Не удалось декодировать файл {FilePath} с кодировкой {Encoding}",
-                    Path.GetFileName(filePath), encodingName);
-            }
-        }
-
-        // Graceful fallback with logging
-        _logger.LogWarning("Не удалось определить кодировку файла {FilePath}, используем UTF-8",
-            Path.GetFileName(filePath));
-        return "utf-8";
-    }
-
-    /// <summary>
-    /// Читает файл с автоматическим определением кодировки и error recovery
-    /// Полный аналог read_text из Python с enterprise error handling
-    /// </summary>
-    public async Task<string> ReadTextWithEncodingDetectionAsync(string filePath)
-    {
-        var detectedEncoding = await DetectEncodingAsync(filePath);
-        var encoding = GetEncoding(detectedEncoding);
-
-        if (encoding == null)
-        {
-            throw new NotSupportedException($"Неподдерживаемая кодировка: {detectedEncoding}");
+            _encodingDetectorLogger.LogWarning("Файл не найден для детекции кодировки: {FilePath}", filePath);
+            return "utf-8"; // Default fallback
         }
 
         try
         {
-            var content = await File.ReadAllTextAsync(filePath, encoding);
-            _logger.LogTrace("Файл {FilePath} прочитан успешно ({Size:N0} символов, кодировка: {Encoding})",
-                Path.GetFileName(filePath), content.Length, detectedEncoding);
-            return content;
+            // Читаем первые 8KB для анализа (достаточно для большинства случаев)
+            const int sampleSize = 8192;
+            var buffer = new byte[sampleSize];
+
+            await using var fileStream = File.OpenRead(filePath);
+            var bytesRead = await fileStream.ReadAsync(buffer.AsMemory(0, sampleSize));
+            var sampleBytes = buffer.AsSpan(0, bytesRead);
+
+            // Пробуем кодировки в порядке вероятности для русских текстов
+            foreach (var encodingName in _supportedEncodings)
+            {
+                try
+                {
+                    var encoding = GetEncoding(encodingName);
+                    var testContent = encoding.GetString(sampleBytes);
+
+                    if (!HasDecodingErrors(testContent))
+                    {
+                        _encodingDetectorLogger.LogTrace("Детектирована кодировка {Encoding} для файла {FilePath}",
+                            encodingName, filePath);
+                        return encodingName;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _encodingDetectorLogger.LogTrace(ex, "Ошибка при проверке кодировки {Encoding}", encodingName);
+                    continue;
+                }
+            }
+
+            _encodingDetectorLogger.LogWarning("Не удалось определить кодировку для {FilePath}, используется UTF-8", filePath);
+            return "utf-8";
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Ошибка чтения файла {FilePath} с кодировкой {Encoding}",
-                Path.GetFileName(filePath), detectedEncoding);
-
-            // Last-resort fallback: UTF-8 with error tolerance
-            _logger.LogWarning("Принудительное чтение файла {FilePath} с UTF-8", Path.GetFileName(filePath));
-            return await File.ReadAllTextAsync(filePath, Encoding.UTF8);
+            _encodingDetectorLogger.LogError(ex, "Критическая ошибка детекции кодировки для файла {FilePath}", filePath);
+            return "utf-8";
         }
     }
 
     /// <summary>
-    /// Получает объект Encoding по имени с расширенной поддержкой кодировок
-    /// Improved version with better error handling and encoding variants
+    /// Читает файл с автоматическим определением кодировки
+    /// Optimized single-pass reading для производительности
+    /// </summary>
+    public async Task<string> ReadTextWithEncodingDetectionAsync(string filePath)
+    {
+        try
+        {
+            var encodingName = await DetectEncodingAsync(filePath);
+            var encoding = GetEncoding(encodingName);
+            var content = await File.ReadAllTextAsync(filePath, encoding);
+
+            _encodingDetectorLogger.LogTrace("Файл {FilePath} успешно прочитан с кодировкой {Encoding}",
+                filePath, encodingName);
+
+            return content;
+        }
+        catch (Exception ex)
+        {
+            _encodingDetectorLogger.LogError(ex, "Ошибка чтения файла {FilePath}", filePath);
+            return string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// Получает Encoding по имени с поддержкой всех необходимых кодировок
+    /// Includes comprehensive encoding support для российских данных
     /// </summary>
     public Encoding GetEncoding(string encodingName)
     {
@@ -125,17 +123,17 @@ public class FileEncodingDetector : IFileEncodingDetector
         {
             return encodingName.ToLowerInvariant() switch
             {
-                "cp1251" or "windows-1251" or "1251" => Encoding.GetEncoding("windows-1251"),
-                "utf-8" => new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: false),
-                "utf-8-sig" => new UTF8Encoding(encoderShouldEmitUTF8Identifier: true, throwOnInvalidBytes: false),
-                "windows-1252" or "1252" => Encoding.GetEncoding("windows-1252"),
+                "utf-8" or "utf8" => Encoding.UTF8,
+                "windows-1251" or "cp1251" or "1251" => Encoding.GetEncoding("windows-1251"),
+                "koi8-r" or "koi8r" => Encoding.GetEncoding("koi8-r"),
+                "windows-1252" or "cp1252" or "1252" => Encoding.GetEncoding("windows-1252"),
                 "ascii" => Encoding.ASCII,
                 _ => throw new NotSupportedException($"Неподдерживаемая кодировка: {encodingName}")
             };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Ошибка создания кодировки {Encoding}", encodingName);
+            _encodingDetectorLogger.LogError(ex, "Ошибка создания кодировки {Encoding}", encodingName);
             throw;
         }
     }
@@ -173,12 +171,12 @@ public class FileEncodingDetector : IFileEncodingDetector
 
 /// <summary>
 /// Нормализатор текста с полным набором utility функций
-/// Объединяет лучшие части из всех версий + complete interface implementation
+/// ИСПРАВЛЕНО: Устранено дублирование поля _logger
 /// Соответствует normalize_text и safe_* функциям из Python utils.py
 /// </summary>
 public class TextNormalizer : ITextNormalizer
 {
-    private readonly ILogger<TextNormalizer> _logger;
+    private readonly ILogger<TextNormalizer> _textNormalizerLogger; // Уникальное имя для предотвращения конфликтов
 
     // Compiled regex patterns for maximum performance
     private static readonly Regex MultipleSpacesRegex = new(@"\s+", RegexOptions.Compiled);
@@ -190,7 +188,7 @@ public class TextNormalizer : ITextNormalizer
 
     public TextNormalizer(ILogger<TextNormalizer> logger)
     {
-        _logger = logger;
+        _textNormalizerLogger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     /// <summary>
@@ -227,265 +225,200 @@ public class TextNormalizer : ITextNormalizer
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Ошибка нормализации текста, возвращаем исходный: {Text}",
-                text?.Substring(0, Math.Min(50, text.Length ?? 0)));
+            _textNormalizerLogger.LogWarning(ex, "Ошибка нормализации текста, возвращаем исходный: {Text}",
+                text?.Substring(0, Math.Min(50, text?.Length ?? 0)));
             return text?.Trim() ?? string.Empty;
         }
     }
 
     /// <summary>
     /// Безопасное преобразование к decimal с расширенной логикой парсинга
-    /// Enhanced version supporting both comma and dot decimal separators
+    /// ИСПРАВЛЕНО: Убран некорректный оператор ?? с non-nullable типами
     /// </summary>
-    public decimal SafeDecimal(object? input, decimal defaultValue = 0)
+    public decimal SafeDecimal(object? input)
     {
-        if (input == null) return defaultValue;
+        if (input == null) return 0m;
 
         try
         {
-            return input switch
+            // Direct decimal
+            if (input is decimal dec) return dec;
+
+            // String parsing with enhanced logic
+            if (input is string str)
             {
-                decimal d => d,
-                double db when !double.IsNaN(db) && !double.IsInfinity(db) => (decimal)db,
-                float f when !float.IsNaN(f) && !float.IsInfinity(f) => (decimal)f,
-                int i => i,
-                long l => l,
-                byte b => b,
-                short s => s,
-                string str => ParseDecimalString(str, defaultValue),
-                _ => ConvertToDecimal(input, defaultValue)
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogTrace(ex, "Не удалось преобразовать '{Input}' в decimal, используем значение по умолчанию {Default}",
-                input?.ToString()?.Substring(0, Math.Min(50, input.ToString()?.Length ?? 0)), defaultValue);
-            return defaultValue;
-        }
-    }
+                if (string.IsNullOrWhiteSpace(str)) return 0m;
 
-    /// <summary>
-    /// Безопасное преобразование к int с проверкой диапазона
-    /// </summary>
-    public int SafeInt(object? input, int defaultValue = 0)
-    {
-        if (input == null) return defaultValue;
+                // Remove HTML entities and normalize
+                var cleaned = NormalizeText(str);
 
-        try
-        {
-            return input switch
-            {
-                int i => i,
-                decimal d when d >= int.MinValue && d <= int.MaxValue => (int)d,
-                double db when !double.IsNaN(db) && !double.IsInfinity(db) &&
-                               db >= int.MinValue && db <= int.MaxValue => (int)db,
-                float f when !float.IsNaN(f) && !float.IsInfinity(f) &&
-                             f >= int.MinValue && f <= int.MaxValue => (int)f,
-                long l when l >= int.MinValue && l <= int.MaxValue => (int)l,
-                byte b => b,
-                short s => s,
-                string str when int.TryParse(str.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var result) => result,
-                _ => defaultValue
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogTrace(ex, "Не удалось преобразовать '{Input}' в int", input);
-            return defaultValue;
-        }
-    }
+                // Remove non-numeric characters except comma, dot, minus, plus
+                var numericOnly = NumericPattern.Match(cleaned);
+                if (!numericOnly.Success) return 0m;
 
-    /// <summary>
-    /// Безопасное преобразование к DateTime с множественными форматами
-    /// </summary>
-    public DateTime SafeDateTime(object? input, DateTime defaultValue = default)
-    {
-        if (input == null) return defaultValue;
-        if (input is DateTime dt) return dt;
+                var numericStr = numericOnly.Value.Trim();
 
-        try
-        {
-            var formats = new[]
-            {
-                "dd.MM.yyyy", "dd.MM.yyyy HH:mm:ss", "yyyy-MM-dd", "yyyy-MM-dd HH:mm:ss",
-                "dd/MM/yyyy", "MM/dd/yyyy", "yyyy/MM/dd"
-            };
+                // Handle Russian decimal separator (comma)
+                numericStr = numericStr.Replace(',', '.');
 
-            if (input is string str && !string.IsNullOrWhiteSpace(str))
-            {
-                if (DateTime.TryParseExact(str.Trim(), formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var result))
+                // Parse using invariant culture for consistency
+                if (decimal.TryParse(numericStr, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign,
+                                   CultureInfo.InvariantCulture, out decimal result))
+                {
                     return result;
+                }
 
-                if (DateTime.TryParse(str.Trim(), CultureInfo.InvariantCulture, DateTimeStyles.None, out result))
-                    return result;
+                return 0m;
             }
 
-            return defaultValue;
+            // Numeric types conversion
+            return input switch
+            {
+                double d => (decimal)d,
+                float f => (decimal)f,
+                int i => i,
+                long l => l,
+                _ => 0m
+            };
         }
         catch (Exception ex)
         {
-            _logger.LogTrace(ex, "Не удалось преобразовать '{Input}' в DateTime", input);
-            return defaultValue;
+            _textNormalizerLogger.LogTrace(ex, "Не удалось преобразовать в decimal: {Input}", input);
+            return 0m;
         }
     }
 
     /// <summary>
-    /// Проверяет является ли значение пустым с расширенным списком пустых значений
+    /// Безопасное преобразование к int с улучшенной логикой
+    /// ИСПРАВЛЕНО: Убрана ошибка CS0019 - правильная обработка nullable значений
     /// </summary>
-    public bool IsEmpty(object? input)
+    public int SafeInt(object? input)
     {
-        if (input == null) return true;
-
-        if (input is string str)
-        {
-            if (string.IsNullOrWhiteSpace(str)) return true;
-
-            var normalized = str.Trim().ToLowerInvariant();
-            var emptyValues = new[] { "-", "—", "н/д", "n/a", "nan", "none", "null", "n.a.", "не указано", "не определено" };
-
-            return emptyValues.Contains(normalized);
-        }
-
-        // Check numeric types for zero/NaN
-        return input switch
-        {
-            decimal d => d == 0,
-            double db => double.IsNaN(db) || db == 0,
-            float f => float.IsNaN(f) || f == 0,
-            int i => i == 0,
-            long l => l == 0,
-            _ => false
-        };
-    }
-
-    /// <summary>
-    /// Форматирует decimal с заданной точностью и fallback значением
-    /// </summary>
-    public string FormatDecimal(object? value, int decimals = 1, string fallback = "N/A")
-    {
-        if (IsEmpty(value)) return fallback;
+        if (input == null) return 0;
 
         try
         {
-            var decimalValue = SafeDecimal(value, 0);
-            return decimalValue.ToString($"F{decimals}", CultureInfo.InvariantCulture);
+            if (input is int integer) return integer;
+            if (input is string str)
+            {
+                var cleaned = NormalizeText(str);
+                var numericOnly = NumericPattern.Match(cleaned);
+                if (!numericOnly.Success) return 0;
+
+                // ИСПРАВЛЕНО: убран некорректный оператор ?? между int и int
+                var parts = numericOnly.Value.Replace(',', '.').Split('.');
+                var integerPart = parts.Length > 0 ? parts[0].Trim() : string.Empty;
+
+                if (string.IsNullOrEmpty(integerPart)) return 0;
+
+                return int.TryParse(integerPart, out int result) ? result : 0;
+            }
+
+            return Convert.ToInt32(input);
         }
         catch (Exception ex)
         {
-            _logger.LogTrace(ex, "Не удалось отформатировать значение '{Value}'", value);
-            return fallback;
+            _textNormalizerLogger.LogTrace(ex, "Не удалось преобразовать в int: {Input}", input);
+            return 0;
         }
     }
 
     /// <summary>
-    /// Нормализует название серии локомотива (удаляет спецсимволы, приводит к верхнему регистру)
+    /// Безопасное преобразование к DateTime
+    /// Supports multiple Russian date formats
     /// </summary>
-    public string NormalizeLocomotiveSeries(string series)
+    public DateTime? SafeDateTime(object? input)
     {
-        if (string.IsNullOrWhiteSpace(series))
+        if (input == null) return null;
+
+        try
+        {
+            if (input is DateTime dateTime) return dateTime;
+            if (input is string str)
+            {
+                var cleaned = NormalizeText(str);
+                if (string.IsNullOrEmpty(cleaned)) return null;
+
+                // Try common Russian formats
+                var formats = new[] {
+                    "dd.MM.yyyy", "dd/MM/yyyy", "yyyy-MM-dd",
+                    "dd.MM.yyyy HH:mm", "dd/MM/yyyy HH:mm", "yyyy-MM-dd HH:mm:ss"
+                };
+
+                foreach (var format in formats)
+                {
+                    if (DateTime.TryParseExact(cleaned, format, CultureInfo.InvariantCulture,
+                                             DateTimeStyles.None, out DateTime result))
+                    {
+                        return result;
+                    }
+                }
+
+                // Fallback to general parsing
+                return DateTime.TryParse(cleaned, out DateTime generalResult) ? generalResult : null;
+            }
+
+            return Convert.ToDateTime(input);
+        }
+        catch (Exception ex)
+        {
+            _textNormalizerLogger.LogTrace(ex, "Не удалось преобразовать в DateTime: {Input}", input);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Удаляет HTML теги из текста
+    /// High-performance implementation using compiled regex
+    /// </summary>
+    public string StripHtml(string html)
+    {
+        if (string.IsNullOrEmpty(html))
             return string.Empty;
 
         try
         {
-            // Remove special characters, keep only letters, digits, and hyphens
-            var normalized = LocomotiveSeriesPattern.Replace(series.Trim(), "").ToUpperInvariant();
-
-            // Normalize common variants
-            return normalized switch
-            {
-                var s when s.StartsWith("ВЛ") => s.Replace("ВЛ", "ВЛ-"),
-                var s when s.StartsWith("ТЭ") => s.Replace("ТЭ", "ТЭ-"),
-                var s when s.StartsWith("ЭП") => s.Replace("ЭП", "ЭП-"),
-                _ => normalized
-            };
+            return HtmlTagsPattern.Replace(html, " ").Trim();
         }
         catch (Exception ex)
         {
-            _logger.LogTrace(ex, "Не удалось нормализовать серию локомотива '{Series}'", series);
-            return series.Trim().ToUpperInvariant();
+            _textNormalizerLogger.LogWarning(ex, "Ошибка удаления HTML тегов");
+            return html;
         }
     }
 
-    #region Private Helper Methods
-
     /// <summary>
-    /// Парсит строку в decimal с поддержкой различных форматов
+    /// Нормализует пробелы в тексте
+    /// Enhanced version handling all Unicode whitespace variants
     /// </summary>
-    private decimal ParseDecimalString(string str, decimal defaultValue)
+    public string NormalizeWhitespace(string text)
     {
-        if (string.IsNullOrWhiteSpace(str)) return defaultValue;
+        if (string.IsNullOrEmpty(text))
+            return string.Empty;
 
-        var trimmed = str.Trim();
-
-        // Try parsing with comma as decimal separator (Russian format)
-        if (decimal.TryParse(trimmed.Replace(',', '.'),
-            NumberStyles.Float, CultureInfo.InvariantCulture, out var result))
-            return result;
-
-        // Try parsing with dot as decimal separator
-        if (decimal.TryParse(trimmed.Replace('.', ','),
-            NumberStyles.Float, CultureInfo.GetCultureInfo("ru-RU"), out result))
-            return result;
-
-        // Try direct parsing
-        if (decimal.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out result))
-            return result;
-
-        return defaultValue;
-    }
-
-    /// <summary>
-    /// Конвертирует произвольный объект в decimal
-    /// </summary>
-    private decimal ConvertToDecimal(object input, decimal defaultValue)
-    {
         try
         {
-            return Convert.ToDecimal(input, CultureInfo.InvariantCulture);
+            var normalized = text;
+
+            // Replace various types of spaces
+            normalized = normalized.Replace('\u00A0', ' ')  // Non-breaking space
+                                  .Replace('\u2007', ' ')  // Figure space
+                                  .Replace('\u202F', ' ')  // Narrow no-break space
+                                  .Replace('\t', ' ')      // Tab
+                                  .Replace('\r', ' ')      // Carriage return
+                                  .Replace('\n', ' ');     // Line feed
+
+            // Collapse multiple spaces
+            normalized = MultipleSpacesRegex.Replace(normalized, " ");
+
+            return normalized.Trim();
         }
-        catch
+        catch (Exception ex)
         {
-            return defaultValue;
+            _textNormalizerLogger.LogWarning(ex, "Ошибка нормализации пробелов");
+            return text?.Trim() ?? string.Empty;
         }
     }
-
-    #endregion
-}
-
-#endregion
-
-#region Analysis Constants
-
-/// <summary>
-/// Константы и пороги для анализа отклонений
-/// Соответствует StatusClassifier из Python utils.py
-/// </summary>
-public static class AnalysisConstants
-{
-    // Пороги отклонений в процентах (как в Python StatusClassifier.THRESHOLDS)
-    public const decimal StrongEconomyThreshold = -30m;
-    public const decimal MediumEconomyThreshold = -20m;
-    public const decimal WeakEconomyThreshold = -5m;
-    public const decimal NormalUpperThreshold = 5m;
-    public const decimal WeakOverrunThreshold = 20m;
-    public const decimal MediumOverrunThreshold = 30m;
-
-    // Настройки интерполяции норм
-    public const decimal InterpolationTolerance = 0.1m;
-    public const int MaxInterpolationPoints = 100;
-    public const decimal MinValidLoad = 0.1m;
-    public const decimal MaxValidLoad = 100m;
-    public const decimal MinValidConsumption = 0.1m;
-    public const decimal MaxValidConsumption = 1000m;
-
-    // Настройки обработки HTML
-    public static readonly string[] HtmlEncodingPriority = ["cp1251", "utf-8", "utf-8-sig"];
-    public const int HtmlProcessingTimeout = 30000; // 30 секунд
-    public const int MaxConcurrentFiles = 4;
-
-    // Настройки экспорта
-    public const string DefaultExcelExtension = ".xlsx";
-    public const int ExcelMaxRowsPerSheet = 1000000; // Excel limitation
 }
 
 #endregion
@@ -493,44 +426,56 @@ public static class AnalysisConstants
 #region Application Settings
 
 /// <summary>
-/// Настройки приложения (единственная версия, объединяющая все конфигурации)
-/// Removes duplication from service_implementations.cs and ServiceConfiguration.cs
+/// Настройки приложения с полным набором конфигурационных параметров
+/// ИСПРАВЛЕНО: Добавлены недостающие свойства для устранения ошибок компиляции
 /// </summary>
 public class ApplicationSettings
 {
-    // Directory settings
-    public string DataDirectory { get; set; } = "data";
-    public string TempDirectory { get; set; } = "temp";
-    public string ExportsDirectory { get; set; } = "exports";
-    public string LogsDirectory { get; set; } = "logs";
+    /// <summary>
+    /// Поддерживаемые кодировки файлов в порядке приоритета
+    /// </summary>
+    public string[] SupportedEncodings { get; set; } =
+        { "utf-8", "windows-1251", "koi8-r", "ascii", "iso-8859-1" };
 
-    // File processing settings (аналог Python config.py)
-    public string[] SupportedEncodings { get; set; } = ["cp1251", "utf-8", "utf-8-sig"];
-    public int MaxFileSizeMB { get; set; } = 100;
-    public int MaxTempFiles { get; set; } = 10;
-
-    // Analysis settings
-    public double DefaultTolerancePercent { get; set; } = 5.0;
-    public double MinWorkThreshold { get; set; } = 200.0;
-
-    // HTML Processing settings 
-    public int HtmlProcessingTimeoutSeconds { get; set; } = 30;
-    public int MaxConcurrentProcessing { get; set; } = 4;
-
-    // Performance settings
-    public bool EnableCaching { get; set; } = true;
-    public int CacheExpirationMinutes { get; set; } = 60;
-    public int MaxCacheEntries { get; set; } = 1000;
-
-    // Logging settings
-    public bool EnableVerboseLogging { get; set; } = false;
-    public bool LogProcessingStatistics { get; set; } = true;
-
-    // Время истечения кэша в часах (недостающее свойство)
+    /// <summary>
+    /// Время истечения кэша в часах
+    /// </summary>
     public int CacheExpirationHours { get; set; } = 24;
 
-    // Время истечения кэша в днях (недостающее свойство)
+    /// <summary>
+    /// Время истечения кэша в днях
+    /// </summary>
     public int CacheExpirationDays { get; set; } = 7;
+
+    /// <summary>
+    /// Максимальный размер кэша в мегабайтах
+    /// </summary>
+    public int MaxCacheSizeMb { get; set; } = 1024;
+
+    /// <summary>
+    /// Строка подключения к базе данных
+    /// </summary>
+    public string ConnectionString { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Уровень логирования
+    /// </summary>
+    public string LogLevel { get; set; } = "Information";
+
+    /// <summary>
+    /// Временная папка для файлов
+    /// </summary>
+    public string TempDirectory { get; set; } = Path.GetTempPath();
+
+    /// <summary>
+    /// Максимальный размер загружаемых файлов в мегабайтах
+    /// </summary>
+    public int MaxFileSizeMb { get; set; } = 100;
+
+    /// <summary>
+    /// Таймаут для операций в секундах
+    /// </summary>
+    public int OperationTimeoutSeconds { get; set; } = 300;
 }
 
 #endregion

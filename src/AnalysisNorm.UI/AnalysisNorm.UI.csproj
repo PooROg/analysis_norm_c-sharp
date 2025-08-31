@@ -26,7 +26,11 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0" />
     
-    <!-- ИСПРАВЛЕНО: OxyPlot для WPF - правильные пакеты -->
+    <!-- ИСПРАВЛЕНО: Material Design Themes для WPF -->
+    <PackageReference Include="MaterialDesignThemes" Version="5.1.0" />
+    <PackageReference Include="MaterialDesignColors" Version="3.1.0" />
+    
+    <!-- OxyPlot для WPF - правильные пакеты -->
     <PackageReference Include="OxyPlot.Core" Version="2.2.0" />
     <PackageReference Include="OxyPlot.Wpf" Version="2.2.0" />
     <PackageReference Include="OxyPlot.SkiaSharp" Version="2.2.0" />

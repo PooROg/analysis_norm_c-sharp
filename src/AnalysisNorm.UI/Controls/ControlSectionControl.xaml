@@ -3,200 +3,111 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes">
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="0,0,8,0">
-            <TextBlock Text="Управление" 
-                       FontSize="16" FontWeight="SemiBold" 
+    <materialDesign:Card Padding="16" 
+                        Margin="8"
+                        materialDesign:ElevationAssist.Elevation="Dp2">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Заголовок секции -->
+            <TextBlock Grid.Row="0"
+                       Text="Управление анализом"
+                       Style="{StaticResource MaterialDesignHeadline6TextBlock}"
                        Margin="0,0,0,16"/>
 
-            <!-- Выбор участка - аналог Python section selection -->
-            <StackPanel Margin="0,0,0,12">
-                <TextBlock Text="Участок:" 
-                           FontWeight="Medium" 
-                           Margin="0,0,0,6"/>
-                
-                <ComboBox x:Name="SectionComboBox"
-                          ItemsSource="{Binding DataContext.Sections, RelativeSource={RelativeSource AncestorType=Window}}"
-                          SelectedItem="{Binding DataContext.SelectedSection, RelativeSource={RelativeSource AncestorType=Window}}"
-                          materialDesign:HintAssist.Hint="Выберите участок"
-                          materialDesign:ComboBoxAssist.MaxLength="50"
-                          Style="{StaticResource MaterialDesignComboBox}"/>
-                          
-                <TextBlock x:Name="SectionInfoLabel"
-                           Text="{Binding DataContext.SectionInfo, RelativeSource={RelativeSource AncestorType=Window}}"
-                           FontSize="11" 
-                           Foreground="Gray"
-                           Margin="0,4,0,0"/>
-            </StackPanel>
+            <!-- Ввод названия участка -->
+            <TextBox Grid.Row="1"
+                     x:Name="SectionInputTextBox"
+                     materialDesign:HintAssist.Hint="Введите название участка"
+                     materialDesign:TextFieldAssist.DecorationVisibility="Visible"
+                     materialDesign:TextFieldAssist.UnderlineBrush="{DynamicResource MaterialDesignDivider}"
+                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                     Margin="0,8"
+                     FontSize="14"
+                     Text="{Binding SelectedSection, UpdateSourceTrigger=PropertyChanged}"/>
 
-            <!-- Фильтр "только один участок" - аналог Python single_section_only -->
-            <CheckBox Content="Только маршруты с одним участком"
-                      IsChecked="{Binding DataContext.SingleSectionOnly, RelativeSource={RelativeSource AncestorType=Window}}"
-                      Style="{StaticResource MaterialDesignCheckBox}"
-                      Margin="0,0,0,16"/>
+            <!-- Выбор нормы -->
+            <ComboBox Grid.Row="2"
+                      x:Name="NormSelectionComboBox"
+                      materialDesign:HintAssist.Hint="Выберите норму расхода"
+                      materialDesign:ComboBoxAssist.MaxLength="10"
+                      Style="{StaticResource MaterialDesignComboBox}"
+                      Margin="0,8"
+                      ItemsSource="{Binding AvailableNorms}"
+                      SelectedItem="{Binding SelectedNorm}"
+                      DisplayMemberPath="NormId"
+                      IsEnabled="{Binding IsNormSelectionEnabled}"/>
 
-            <!-- Выбор нормы - аналог Python norm selection -->
-            <StackPanel Margin="0,0,0,12">
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                    <TextBlock Text="Норма:" 
-                               FontWeight="Medium" 
-                               VerticalAlignment="Center"/>
-                    
-                    <Button x:Name="NormInfoButton"
-                            Content="Инфо"
-                            Style="{StaticResource MaterialDesignOutlinedButton}"
-                            Padding="8,2"
-                            FontSize="10"
-                            Height="24"
-                            IsEnabled="False"
-                            Margin="8,0,0,0"
-                            ToolTip="Информация о выбранной норме"/>
-                </StackPanel>
-                
-                <ComboBox x:Name="NormComboBox"
-                          ItemsSource="{Binding DataContext.NormsWithCounts, RelativeSource={RelativeSource AncestorType=Window}}"
-                          SelectedItem="{Binding DataContext.SelectedNorm, RelativeSource={RelativeSource AncestorType=Window}}"
-                          materialDesign:HintAssist.Hint="Выберите норму"
-                          materialDesign:ComboBoxAssist.MaxLength="80"
-                          Style="{StaticResource MaterialDesignComboBox}"
-                          SelectionChanged="NormComboBox_SelectionChanged"/>
-            </StackPanel>
-
-            <!-- Кнопки анализа - аналог Python analysis buttons -->
-            <StackPanel Margin="0,0,0,16">
-                <Button Content="Выполнить анализ"
-                        Command="{Binding DataContext.AnalyzeCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                        Style="{StaticResource MaterialDesignRaisedButton}"
-                        materialDesign:ButtonAssist.CornerRadius="4"
-                        Padding="20,8"
-                        FontWeight="Medium"
-                        Margin="0,0,0,8"/>
-
-                <Button Content="Фильтр локомотивов"
-                        Command="{Binding DataContext.FilterLocomotivesCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                        Style="{StaticResource MaterialDesignOutlinedButton}"
-                        Padding="16,6"
-                        Margin="0,0,0,8"/>
-
-                <TextBlock x:Name="FilterInfoLabel"
-                           Text="{Binding DataContext.FilterInfo, RelativeSource={RelativeSource AncestorType=Window}}"
-                           FontSize="11"
-                           Foreground="Orange"
-                           Margin="0,0,0,8"/>
-            </StackPanel>
-
-            <!-- Чекбоксы дополнительных настроек - аналог Python use_coefficients, exclude_low_work -->
-            <StackPanel Margin="0,0,0,16">
-                <CheckBox Content="Использовать коэффициенты локомотивов"
-                          IsChecked="{Binding DataContext.UseCoefficients, RelativeSource={RelativeSource AncestorType=Window}}"
+            <!-- Опции анализа -->
+            <StackPanel Grid.Row="3" Orientation="Vertical" Margin="0,16,0,8">
+                <CheckBox x:Name="SingleSectionOnlyCheckBox"
+                          Content="Анализировать только выбранный участок"
+                          IsChecked="{Binding SingleSectionOnly}"
                           Style="{StaticResource MaterialDesignCheckBox}"
-                          Margin="0,0,0,6"/>
-
-                <CheckBox Content="Исключить маршруты с низкой работой"
-                          IsChecked="{Binding DataContext.ExcludeLowWork, RelativeSource={RelativeSource AncestorType=Window}}"
-                          Style="{StaticResource MaterialDesignCheckBox}"/>
-            </StackPanel>
-
-            <!-- Статистика - аналог Python statistics section -->
-            <Expander Header="Статистика" 
-                      IsExpanded="True"
-                      Style="{StaticResource MaterialDesignExpander}"
-                      Margin="0,0,0,16">
+                          Margin="0,4"/>
                 
-                <ScrollViewer MaxHeight="200" VerticalScrollBarVisibility="Auto">
-                    <TextBox x:Name="StatisticsTextBox"
-                             Text="{Binding DataContext.StatisticsText, RelativeSource={RelativeSource AncestorType=Window}}"
-                             IsReadOnly="True"
-                             TextWrapping="Wrap"
-                             AcceptsReturn="True"
-                             Background="Transparent"
-                             BorderThickness="0"
-                             FontFamily="Consolas"
-                             FontSize="11"
-                             Padding="8,4"/>
-                </ScrollViewer>
-            </Expander>
+                <CheckBox x:Name="IncludeStatisticsCheckBox"
+                          Content="Включить детальную статистику"
+                          IsChecked="{Binding IncludeStatistics}"
+                          Style="{StaticResource MaterialDesignCheckBox}"
+                          Margin="0,4"/>
+                
+                <CheckBox x:Name="UseCoefficientsCheckBox"
+                          Content="Применять коэффициенты локомотивов"
+                          IsChecked="{Binding UseCoefficients}"
+                          Style="{StaticResource MaterialDesignCheckBox}"
+                          Margin="0,4"/>
+            </StackPanel>
 
-            <!-- Кнопки управления анализом - аналог Python action buttons -->
-            <StackPanel Margin="0,0,0,12">
-                <Button Content="Анализировать участок"
-                        Command="{Binding DataContext.AnalyzeCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+            <!-- Кнопки управления -->
+            <StackPanel Grid.Row="4" 
+                        Orientation="Horizontal" 
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        Margin="0,16,0,0">
+                
+                <Button x:Name="StartAnalysisButton"
                         Style="{StaticResource MaterialDesignRaisedButton}"
-                        materialDesign:ButtonAssist.CornerRadius="4"
-                        Padding="20,8"
-                        FontWeight="Medium"
-                        Margin="0,0,0,8"/>
+                        Content="Начать анализ"
+                        Command="{Binding StartAnalysisCommand}"
+                        IsEnabled="{Binding CanStartAnalysis}"
+                        Margin="0,0,8,0"
+                        Padding="16,8">
+                    <Button.Content>
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="PlayCircleOutline" 
+                                                   Width="16" 
+                                                   Height="16" 
+                                                   Margin="0,0,8,0"/>
+                            <TextBlock Text="Начать анализ" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button.Content>
+                </Button>
 
-                <Button Content="Фильтр локомотивов"
-                        Command="{Binding DataContext.FilterLocomotivesCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                <Button x:Name="StopAnalysisButton"
                         Style="{StaticResource MaterialDesignOutlinedButton}"
-                        Padding="16,6"
-                        Margin="0,0,0,8"/>
-
-                <Button Content="Редактировать нормы"
-                        Command="{Binding DataContext.EditNormsCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                        Style="{StaticResource MaterialDesignOutlinedButton}"
-                        Padding="16,6"
-                        Margin="0,0,0,8"/>
-
-                <TextBlock x:Name="FilterInfoLabel"
-                           Text="{Binding DataContext.FilterInfo, RelativeSource={RelativeSource AncestorType=Window}}"
-                           FontSize="11"
-                           Foreground="Orange"
-                           Margin="0,0,0,8"/>
+                        Content="Остановить"
+                        Command="{Binding StopAnalysisCommand}"
+                        IsEnabled="{Binding CanStopAnalysis}"
+                        Padding="16,8">
+                    <Button.Content>
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="StopCircleOutline" 
+                                                   Width="16" 
+                                                   Height="16" 
+                                                   Margin="0,0,8,0"/>
+                            <TextBlock Text="Остановить" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button.Content>
+                </Button>
             </StackPanel>
+        </Grid>
+    </materialDesign:Card>
 
-            <!-- Кнопки экспорта - аналог Python export buttons в ControlSection -->
-            <StackPanel Margin="0,0,0,16">
-                <TextBlock Text="Экспорт:" 
-                           FontWeight="Medium" 
-                           Margin="0,0,0,6"/>
-                           
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    
-                    <Button Grid.Column="0"
-                            Content="Excel"
-                            Command="{Binding DataContext.ExportExcelCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                            Style="{StaticResource MaterialDesignOutlinedButton}"
-                            Padding="12,6"
-                            Margin="0,0,4,0">
-                        <Button.ContentTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal">
-                                    <materialDesign:PackIcon Kind="FileExcel" 
-                                                            Width="14" Height="14"
-                                                            VerticalAlignment="Center"
-                                                            Margin="0,0,4,0"/>
-                                    <TextBlock Text="{Binding}" VerticalAlignment="Center" FontSize="11"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </Button.ContentTemplate>
-                    </Button>
-
-                    <Button Grid.Column="1"
-                            Content="График"
-                            Command="{Binding DataContext.ExportPlotCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                            Style="{StaticResource MaterialDesignOutlinedButton}"
-                            Padding="12,6"
-                            Margin="4,0,0,0">
-                        <Button.ContentTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal">
-                                    <materialDesign:PackIcon Kind="ChartLine" 
-                                                            Width="14" Height="14"
-                                                            VerticalAlignment="Center"
-                                                            Margin="0,0,4,0"/>
-                                    <TextBlock Text="{Binding}" VerticalAlignment="Center" FontSize="11"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </Button.ContentTemplate>
-                    </Button>
-                </Grid>
-            </StackPanel>
-        </StackPanel>
-    </ScrollViewer>
 </UserControl>

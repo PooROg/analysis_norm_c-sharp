@@ -3,116 +3,289 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes">
 
-    <StackPanel>
-        <TextBlock Text="Файлы данных" 
-                   FontSize="16" FontWeight="SemiBold" 
-                   Margin="0,0,0,16"/>
+    <materialDesign:Card Padding="16" 
+                        Margin="8"
+                        materialDesign:ElevationAssist.Elevation="Dp2">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
 
-        <!-- HTML файлы маршрутов - аналог Python routes files row -->
-        <Grid Margin="0,0,0,12">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="160"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
+            <!-- Заголовок секции -->
+            <TextBlock Grid.Row="0"
+                       Text="Файлы для анализа"
+                       Style="{StaticResource MaterialDesignHeadline6TextBlock}"
+                       Margin="0,0,0,16"/>
 
-            <TextBlock Grid.Column="0" 
-                       Text="HTML маршрутов:" 
-                       VerticalAlignment="Center"
-                       FontWeight="Medium"/>
+            <!-- Кнопки выбора файлов -->
+            <UniformGrid Grid.Row="1" 
+                         Columns="3" 
+                         Margin="0,0,0,16">
+                
+                <!-- Кнопка выбора HTML файлов маршрутов -->
+                <Button x:Name="SelectRouteFilesButton"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        Command="{Binding SelectRouteFilesCommand}"
+                        Margin="0,0,4,0"
+                        Padding="8,12">
+                    <Button.Content>
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="FileOutline" 
+                                                   Width="18" 
+                                                   Height="18" 
+                                                   Margin="0,0,8,0"/>
+                            <StackPanel>
+                                <TextBlock Text="HTML маршруты" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding RouteFilesCount, StringFormat='{}{0} файлов'}" 
+                                          FontSize="11" 
+                                          Opacity="0.7"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Button.Content>
+                </Button>
 
-            <TextBlock Grid.Column="1"
-                       x:Name="RouteFilesLabel"
-                       Text="Не выбраны"
-                       VerticalAlignment="Center"
-                       Margin="8,0"
-                       Foreground="Gray"
-                       TextTrimming="CharacterEllipsis"
-                       ToolTip="{Binding RelativeSource={RelativeSource Self}, Path=Text}"/>
+                <!-- Кнопка выбора HTML файлов норм -->
+                <Button x:Name="SelectNormFilesButton"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        Command="{Binding SelectNormFilesCommand}"
+                        Margin="4,0"
+                        Padding="8,12">
+                    <Button.Content>
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="FileTableOutline" 
+                                                   Width="18" 
+                                                   Height="18" 
+                                                   Margin="0,0,8,0"/>
+                            <StackPanel>
+                                <TextBlock Text="HTML нормы" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding NormFilesCount, StringFormat='{}{0} файлов'}" 
+                                          FontSize="11" 
+                                          Opacity="0.7"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Button.Content>
+                </Button>
 
-            <Button Grid.Column="2"
-                    Content="Выбрать"
-                    Click="SelectRouteFiles_Click"
-                    Style="{StaticResource MaterialDesignOutlinedButton}"
-                    Margin="4,0" Padding="12,4"/>
+                <!-- Кнопка загрузки коэффициентов -->
+                <Button x:Name="SelectCoefficientsButton"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        Command="{Binding SelectCoefficientsCommand}"
+                        Margin="4,0,0,0"
+                        Padding="8,12">
+                    <Button.Content>
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="FileExcelOutline" 
+                                                   Width="18" 
+                                                   Height="18" 
+                                                   Margin="0,0,8,0"/>
+                            <StackPanel>
+                                <TextBlock Text="Коэффициенты" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding CoefficientsStatus}" 
+                                          FontSize="11" 
+                                          Opacity="0.7"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Button.Content>
+                </Button>
+            </UniformGrid>
 
-            <Button Grid.Column="3"
-                    Content="Очистить"
-                    Click="ClearRouteFiles_Click"
-                    Style="{StaticResource MaterialDesignOutlinedButton}"
-                    Margin="4,0" Padding="12,4"/>
+            <!-- Индикатор загрузки -->
+            <ProgressBar Grid.Row="2"
+                         x:Name="FileLoadingProgress"
+                         Style="{StaticResource MaterialDesignLinearProgressBar}"
+                         Value="{Binding LoadingProgress}"
+                         Minimum="0" Maximum="100"
+                         Height="4"
+                         Margin="0,0,0,8"
+                         Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
-            <Button Grid.Column="4"
-                    x:Name="LoadRoutesButton"
-                    Content="Загрузить"
-                    Command="{Binding DataContext.LoadRoutesCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                    CommandParameter="{Binding RouteFiles, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                    Style="{StaticResource MaterialDesignRaisedButton}"
-                    IsEnabled="False"
-                    Margin="4,0" Padding="12,4"/>
+            <!-- Список загруженных файлов -->
+            <DataGrid Grid.Row="3"
+                      x:Name="LoadedFilesDataGrid"
+                      Style="{StaticResource MaterialDesignDataGrid}"
+                      ItemsSource="{Binding LoadedFiles}"
+                      AutoGenerateColumns="False"
+                      IsReadOnly="True"
+                      CanUserSortColumns="True"
+                      CanUserReorderColumns="False"
+                      CanUserResizeColumns="True"
+                      SelectionMode="Extended"
+                      GridLinesVisibility="Horizontal"
+                      HeadersVisibility="Column"
+                      Margin="0,8">
+
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Тип" 
+                                       Binding="{Binding FileType}" 
+                                       Width="80"/>
+                    <DataGridTextColumn Header="Имя файла" 
+                                       Binding="{Binding FileName}" 
+                                       Width="*"/>
+                    <DataGridTextColumn Header="Размер" 
+                                       Binding="{Binding FileSizeFormatted}" 
+                                       Width="80"/>
+                    <DataGridTextColumn Header="Записи" 
+                                       Binding="{Binding RecordCount}" 
+                                       Width="80"/>
+                    <DataGridTextColumn Header="Статус" 
+                                       Binding="{Binding Status}" 
+                                       Width="100"/>
+
+                    <DataGridTemplateColumn Header="Действия" Width="120">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Style="{StaticResource MaterialDesignToolButton}"
+                                            Command="{Binding DataContext.RemoveFileCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip="Удалить файл">
+                                        <materialDesign:PackIcon Kind="Delete" Width="16" Height="16"/>
+                                    </Button>
+                                    
+                                    <Button Style="{StaticResource MaterialDesignToolButton}"
+                                            Command="{Binding DataContext.ViewFileInfoCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip="Подробная информация">
+                                        <materialDesign:PackIcon Kind="Information" Width="16" Height="16"/>
+                                    </Button>
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+
+                <!-- Контекстное меню для строк -->
+                <DataGrid.ContextMenu>
+                    <ContextMenu Style="{StaticResource MaterialDesignContextMenu}">
+                        <MenuItem Header="Удалить выбранные"
+                                  Command="{Binding RemoveSelectedFilesCommand}"
+                                  Icon="{materialDesign:PackIcon Kind=Delete}"/>
+                        <MenuItem Header="Показать в проводнике"
+                                  Command="{Binding ShowInExplorerCommand}"
+                                  Icon="{materialDesign:PackIcon Kind=FolderOpen}"/>
+                        <Separator/>
+                        <MenuItem Header="Свойства файла"
+                                  Command="{Binding ShowFilePropertiesCommand}"
+                                  Icon="{materialDesign:PackIcon Kind=Information}"/>
+                    </ContextMenu>
+                </DataGrid.ContextMenu>
+
+                <!-- Стили для строк DataGrid -->
+                <DataGrid.RowStyle>
+                    <Style TargetType="DataGridRow" BasedOn="{StaticResource MaterialDesignDataGridRow}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Status}" Value="Ошибка">
+                                <Setter Property="Foreground" Value="Red"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Status}" Value="Загружен">
+                                <Setter Property="Foreground" Value="Green"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Status}" Value="Обрабатывается">
+                                <Setter Property="Foreground" Value="Orange"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.RowStyle>
+            </DataGrid>
+
+            <!-- Статистика загруженных файлов и кнопки управления -->
+            <materialDesign:Card Grid.Row="4" 
+                               Padding="12" 
+                               Margin="0,8,0,0"
+                               materialDesign:ElevationAssist.Elevation="Dp1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Статистика файлов -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <materialDesign:PackIcon Kind="FileMultiple" 
+                                               Width="16" Height="16" 
+                                               Margin="0,0,6,0"
+                                               VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding FilesStatistics}" 
+                                  Style="{StaticResource MaterialDesignBody2TextBlock}"
+                                  VerticalAlignment="Center"/>
+                        
+                        <!-- Дополнительная информация о размере -->
+                        <TextBlock Text="{Binding TotalFileSizeFormatted, StringFormat=' • Общий размер: {0}'}" 
+                                  Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                                  VerticalAlignment="Center"
+                                  Margin="8,0,0,0"
+                                  Opacity="0.7"/>
+                    </StackPanel>
+                    
+                    <!-- Кнопки управления -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button x:Name="ClearAllFilesButton"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Command="{Binding ClearAllFilesCommand}"
+                                ToolTip="Очистить все файлы"
+                                Margin="0,0,8,0"
+                                Padding="12,6">
+                            <Button.Content>
+                                <StackPanel Orientation="Horizontal">
+                                    <materialDesign:PackIcon Kind="DeleteSweepOutline" 
+                                                           Width="16" 
+                                                           Height="16" 
+                                                           Margin="0,0,4,0"/>
+                                    <TextBlock Text="Очистить все" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button.Content>
+                        </Button>
+
+                        <Button x:Name="RefreshFilesButton"
+                                Style="{StaticResource MaterialDesignToolButton}"
+                                Command="{Binding RefreshFilesCommand}"
+                                ToolTip="Обновить список файлов"
+                                Padding="8">
+                            <materialDesign:PackIcon Kind="Refresh" Width="20" Height="20"/>
+                        </Button>
+
+                        <Button x:Name="OpenFileFolderButton"
+                                Style="{StaticResource MaterialDesignToolButton}"
+                                Command="{Binding OpenFileFolderCommand}"
+                                ToolTip="Открыть папку с файлами"
+                                Padding="8"
+                                Margin="4,0,0,0">
+                            <materialDesign:PackIcon Kind="FolderOpen" Width="20" Height="20"/>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </materialDesign:Card>
+
+            <!-- Drag & Drop overlay -->
+            <Border x:Name="DragDropOverlay"
+                    Grid.Row="0" Grid.RowSpan="5"
+                    Background="{DynamicResource MaterialDesignSelection}"
+                    BorderBrush="{DynamicResource MaterialDesignDivider}"
+                    BorderThickness="2"
+                    CornerRadius="8"
+                    Opacity="0.8"
+                    Visibility="Collapsed">
+                <StackPanel HorizontalAlignment="Center" 
+                           VerticalAlignment="Center">
+                    <materialDesign:PackIcon Kind="CloudUploadOutline" 
+                                           Width="64" 
+                                           Height="64" 
+                                           Margin="0,0,0,16"/>
+                    <TextBlock Text="Перетащите файлы сюда" 
+                              Style="{StaticResource MaterialDesignHeadline6TextBlock}"
+                              HorizontalAlignment="Center"
+                              Margin="0,0,0,8"/>
+                    <TextBlock Text="Поддерживаются HTML и Excel файлы" 
+                              Style="{StaticResource MaterialDesignBody2TextBlock}"
+                              HorizontalAlignment="Center"
+                              Opacity="0.7"/>
+                </StackPanel>
+            </Border>
         </Grid>
+    </materialDesign:Card>
 
-        <!-- HTML файлы норм - аналог Python norms files row -->
-        <Grid Margin="0,0,0,16">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="160"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-
-            <TextBlock Grid.Column="0" 
-                       Text="HTML норм:" 
-                       VerticalAlignment="Center"
-                       FontWeight="Medium"/>
-
-            <TextBlock Grid.Column="1"
-                       x:Name="NormFilesLabel"
-                       Text="Не выбраны"
-                       VerticalAlignment="Center"
-                       Margin="8,0"
-                       Foreground="Gray"
-                       TextTrimming="CharacterEllipsis"
-                       ToolTip="{Binding RelativeSource={RelativeSource Self}, Path=Text}"/>
-
-            <Button Grid.Column="2"
-                    Content="Выбрать"
-                    Click="SelectNormFiles_Click"
-                    Style="{StaticResource MaterialDesignOutlinedButton}"
-                    Margin="4,0" Padding="12,4"/>
-
-            <Button Grid.Column="3"
-                    Content="Очистить"
-                    Click="ClearNormFiles_Click"
-                    Style="{StaticResource MaterialDesignOutlinedButton}"
-                    Margin="4,0" Padding="12,4"/>
-
-            <Button Grid.Column="4"
-                    x:Name="LoadNormsButton"
-                    Content="Загрузить"
-                    Command="{Binding DataContext.LoadNormsCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                    CommandParameter="{Binding NormFiles, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                    Style="{StaticResource MaterialDesignRaisedButton}"
-                    IsEnabled="False"
-                    Margin="4,0" Padding="12,4"/>
-        </Grid>
-
-        <!-- Статус загрузки - аналог Python load_status -->
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-            <materialDesign:PackIcon x:Name="StatusIcon"
-                                     Kind="Information"
-                                     Width="16" Height="16"
-                                     VerticalAlignment="Center"
-                                     Margin="0,0,6,0"
-                                     Visibility="Collapsed"/>
-
-            <TextBlock x:Name="StatusText"
-                       Text=""
-                       FontWeight="Medium"
-                       VerticalAlignment="Center"/>
-        </StackPanel>
-    </StackPanel>
 </UserControl>

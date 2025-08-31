@@ -20,122 +20,227 @@
 
         <!-- Заголовок и настройки -->
         <materialDesign:Card Grid.Row="0" 
-                             Padding="16" 
-                             Margin="0,0,0,12"
-                             materialDesign:ElevationAssist.Elevation="Dp2">
+                           Padding="16" 
+                           Margin="0,0,0,12"
+                           materialDesign:ElevationAssist.Elevation="Dp2">
             <StackPanel>
                 <TextBlock Text="Фильтр локомотивов по сериям" 
-                           FontSize="16" 
-                           FontWeight="SemiBold"
-                           Margin="0,0,0,12"/>
+                          Style="{StaticResource MaterialDesignHeadline6TextBlock}"
+                          Margin="0,0,0,12"/>
 
-                <!-- Настройки применения коэффициентов - аналог Python use_coefficients -->
+                <!-- Настройки применения коэффициентов -->
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                     <CheckBox x:Name="UseCoefficientsCheckBox"
-                              Content="Применять коэффициенты при анализе"
+                              Content="Применять коэффициенты локомотивов"
                               IsChecked="{Binding UseCoefficients}"
                               Style="{StaticResource MaterialDesignCheckBox}"
                               Margin="0,0,16,0"/>
-                    
-                    <CheckBox x:Name="ExcludeLowWorkCheckBox"
-                              Content="Исключать локомотивы с низкой работой"
-                              IsChecked="{Binding ExcludeLowWork}"
-                              Style="{StaticResource MaterialDesignCheckBox}"/>
+                              
+                    <Button x:Name="LoadCoefficientsButton"
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                            Command="{Binding LoadCoefficientsCommand}"
+                            Content="Загрузить коэффициенты"
+                            Padding="12,6">
+                        <Button.Content>
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="FileExcelOutline" 
+                                                       Width="16" 
+                                                       Height="16" 
+                                                       Margin="0,0,6,0"/>
+                                <TextBlock Text="Загрузить коэффициенты" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button.Content>
+                    </Button>
                 </StackPanel>
 
-                <!-- Файл коэффициентов - аналог Python coefficients_file -->
-                <TextBlock Text="Файл коэффициентов:" 
-                           FontWeight="Medium" 
-                           Margin="0,8,0,4"/>
-                
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    
-                    <TextBlock x:Name="CoefficientsFileLabel"
-                               Grid.Column="0"
-                               Text="Файл не выбран"
-                               VerticalAlignment="Center"
-                               Margin="0,0,8,0"
-                               Style="{StaticResource MaterialDesignCaptionTextBlock}"/>
-
-                    <Button Grid.Column="1"
-                            Content="Загрузить"
-                            Click="LoadCoefficientsFile_Click"
-                            Style="{StaticResource MaterialDesignOutlinedButton}"
-                            Padding="12,4"
-                            Margin="4,0"/>
-
-                    <Button Grid.Column="2"
-                            Content="Очистить"
-                            Click="ClearCoefficients_Click"
-                            Style="{StaticResource MaterialDesignOutlinedButton}"
-                            Padding="12,4"
-                            Margin="4,0"/>
-                </Grid>
-
                 <!-- Статус коэффициентов -->
-                <TextBlock x:Name="CoefficientsStatusLabel"
-                           Text=""
-                           FontSize="11"
-                           Margin="0,4,0,0"/>
+                <TextBlock x:Name="CoefficientsStatusTextBlock"
+                          Text="{Binding CoefficientsStatus}"
+                          Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                          Margin="0,4,0,0"/>
             </StackPanel>
         </materialDesign:Card>
 
-        <!-- Основная область с TabControl для серий локомотивов -->
+        <!-- Основное содержимое - список локомотивов по сериям -->
         <materialDesign:Card Grid.Row="1" 
-                             materialDesign:ElevationAssist.Elevation="Dp1"
-                             Margin="0,0,0,12">
-            <DockPanel>
-                <!-- Информация о выборе -->
-                <StackPanel DockPanel.Dock="Top" 
-                            Orientation="Horizontal" 
-                            Margin="16,16,16,8">
-                    <TextBlock x:Name="SelectionLabel"
-                               Text="Выбрано: 0 из 0"
-                               FontWeight="Medium"
-                               VerticalAlignment="Center"/>
-                    
-                    <Button Content="Выбрать все"
-                            Click="SelectAll_Click"
-                            Style="{StaticResource MaterialDesignFlatButton}"
-                            Margin="12,0,0,0"/>
-                    
-                    <Button Content="Снять все"
-                            Click="UnselectAll_Click"
-                            Style="{StaticResource MaterialDesignFlatButton}"
-                            Margin="4,0,0,0"/>
-                </StackPanel>
+                           materialDesign:ElevationAssist.Elevation="Dp1"
+                           Margin="0,0,0,12">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
 
-                <!-- TabControl для серий локомотивов -->
-                <TabControl x:Name="SeriesTabControl"
-                            Style="{StaticResource MaterialDesignTabControl}"
-                            Margin="8">
-                    <!-- Вкладки будут создаваться динамически в коде -->
-                </TabControl>
-            </DockPanel>
+                <!-- Toolbar фильтрации -->
+                <Border Grid.Row="0" 
+                        Background="{DynamicResource MaterialDesignToolBarBackground}"
+                        Padding="12,8">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBox x:Name="SeriesFilterTextBox"
+                                 materialDesign:HintAssist.Hint="Поиск по серии..."
+                                 materialDesign:TextFieldAssist.HasClearButton="True"
+                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                 Text="{Binding SeriesFilter, UpdateSourceTrigger=PropertyChanged}"
+                                 Width="200"
+                                 Margin="0,0,12,0"/>
+                                 
+                        <Button x:Name="SelectAllButton"
+                                Style="{StaticResource MaterialDesignToolButton}"
+                                Command="{Binding SelectAllCommand}"
+                                ToolTip="Выбрать все"
+                                Margin="0,0,4,0">
+                            <materialDesign:PackIcon Kind="CheckboxMultipleMarked" Width="20" Height="20"/>
+                        </Button>
+                        
+                        <Button x:Name="UnselectAllButton"
+                                Style="{StaticResource MaterialDesignToolButton}"
+                                Command="{Binding UnselectAllCommand}"
+                                ToolTip="Снять выделение"
+                                Margin="4,0">
+                            <materialDesign:PackIcon Kind="CheckboxMultipleBlankOutline" Width="20" Height="20"/>
+                        </Button>
+
+                        <Separator Style="{StaticResource MaterialDesignVerticalSeparator}" Margin="8,0"/>
+
+                        <TextBlock Text="{Binding SelectionSummary}" 
+                                  Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                                  VerticalAlignment="Center"
+                                  Margin="8,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- TreeView с локомотивами по сериям -->
+                <TreeView Grid.Row="1"
+                          x:Name="LocomotiveTreeView"
+                          ItemsSource="{Binding LocomotivesBySeries}"
+                          Style="{StaticResource MaterialDesignTreeView}"
+                          Margin="8">
+                    
+                    <!-- Узлы серий (верхний уровень) -->
+                    <TreeView.ItemTemplate>
+                        <HierarchicalDataTemplate ItemsSource="{Binding Locomotives}">
+                            <StackPanel Orientation="Horizontal">
+                                <CheckBox IsChecked="{Binding IsSelected}"
+                                         Command="{Binding DataContext.SeriesSelectionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                         CommandParameter="{Binding SeriesName}"
+                                         Style="{StaticResource MaterialDesignCheckBox}"
+                                         Margin="0,0,8,0"/>
+                                         
+                                <materialDesign:PackIcon Kind="Train" 
+                                                       Width="16" 
+                                                       Height="16" 
+                                                       Margin="0,0,6,0"/>
+                                                       
+                                <TextBlock Text="{Binding SeriesName}" 
+                                          FontWeight="SemiBold"
+                                          VerticalAlignment="Center"
+                                          Margin="0,0,8,0"/>
+                                          
+                                <TextBlock Text="{Binding Count, StringFormat='({0} лок.)'}" 
+                                          Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                                          VerticalAlignment="Center"
+                                          Opacity="0.7"/>
+                                          
+                                <TextBlock Text="{Binding AvgCoefficient, StringFormat='К ср.={0:F3}'}" 
+                                          Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                                          VerticalAlignment="Center"
+                                          Margin="12,0,0,0"
+                                          Visibility="{Binding DataContext.UseCoefficients, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                            </StackPanel>
+
+                            <!-- Узлы локомотивов (дочерний уровень) -->
+                            <HierarchicalDataTemplate.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Margin="20,2">
+                                        <CheckBox IsChecked="{Binding IsSelected}"
+                                                 Command="{Binding DataContext.LocomotiveSelectionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                 CommandParameter="{Binding}"
+                                                 Style="{StaticResource MaterialDesignCheckBox}"
+                                                 Margin="0,0,8,0"/>
+                                                 
+                                        <TextBlock Text="{Binding Number}" 
+                                                  VerticalAlignment="Center"
+                                                  MinWidth="60"/>
+                                                  
+                                        <TextBlock Text="{Binding Depot}" 
+                                                  Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                                                  VerticalAlignment="Center"
+                                                  Margin="8,0"
+                                                  MinWidth="80"/>
+                                                  
+                                        <Border Background="{Binding CoefficientStatusColor}"
+                                                CornerRadius="2"
+                                                Padding="4,2"
+                                                Margin="8,0,0,0"
+                                                Visibility="{Binding DataContext.UseCoefficients, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <TextBlock Text="{Binding CoefficientFormatted}" 
+                                                      Foreground="White"
+                                                      FontSize="11"
+                                                      FontWeight="SemiBold"/>
+                                        </Border>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </HierarchicalDataTemplate.ItemTemplate>
+                        </HierarchicalDataTemplate>
+                    </TreeView.ItemTemplate>
+                </TreeView>
+            </Grid>
+        </materialDesign:Card>
+
+        <!-- Информация о выборе -->
+        <materialDesign:Card Grid.Row="2" 
+                           Padding="12" 
+                           Margin="0,0,0,12"
+                           materialDesign:ElevationAssist.Elevation="Dp1">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="SpaceBetween">
+                <TextBlock Text="{Binding DetailedSelectionInfo}" 
+                          Style="{StaticResource MaterialDesignBody2TextBlock}"
+                          VerticalAlignment="Center"/>
+                          
+                <StackPanel Orientation="Horizontal">
+                    <materialDesign:PackIcon Kind="Information" 
+                                           Width="16" 
+                                           Height="16" 
+                                           Margin="0,0,4,0"
+                                           VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding CoefficientsSummary}" 
+                              Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                              VerticalAlignment="Center"/>
+                </StackPanel>
+            </StackPanel>
         </materialDesign:Card>
 
         <!-- Кнопки управления -->
-        <StackPanel Grid.Row="2" 
+        <StackPanel Grid.Row="3" 
                     Orientation="Horizontal" 
-                    HorizontalAlignment="Right"
-                    Margin="0,8,0,0">
-            <Button Content="ОК" 
-                    Click="OK_Click"
-                    Style="{StaticResource MaterialDesignRaisedButton}"
-                    IsDefault="True"
-                    Margin="0,0,8,0"
-                    Padding="16,8"/>
+                    HorizontalAlignment="Right">
             
-            <Button Content="Отмена" 
-                    Click="Cancel_Click"
+            <Button x:Name="CancelButton"
                     Style="{StaticResource MaterialDesignOutlinedButton}"
-                    IsCancel="True"
-                    Padding="16,8"/>
+                    Content="Отмена"
+                    Command="{Binding CancelCommand}"
+                    Margin="0,0,8,0"
+                    Padding="16,8"
+                    MinWidth="100"/>
+                    
+            <Button x:Name="ApplySelectionButton"
+                    Style="{StaticResource MaterialDesignRaisedButton}"
+                    Content="Применить выбор"
+                    Command="{Binding ApplySelectionCommand}"
+                    IsEnabled="{Binding CanApplySelection}"
+                    Padding="16,8"
+                    MinWidth="120">
+                <Button.Content>
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="Check" 
+                                               Width="16" 
+                                               Height="16" 
+                                               Margin="0,0,6,0"/>
+                        <TextBlock Text="Применить выбор" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button.Content>
+            </Button>
         </StackPanel>
     </Grid>
+
 </Window>

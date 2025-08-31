@@ -19,135 +19,274 @@
 
         <!-- Заголовок и общая информация -->
         <materialDesign:Card Grid.Row="0" 
-                             Padding="16" 
-                             Margin="0,0,0,12"
-                             materialDesign:ElevationAssist.Elevation="Dp2">
+                           Padding="16" 
+                           Margin="0,0,0,12"
+                           materialDesign:ElevationAssist.Elevation="Dp2">
             <StackPanel>
                 <TextBlock Text="Подробная статистика маршрутов" 
-                           FontSize="18" 
-                           FontWeight="SemiBold"
-                           HorizontalAlignment="Center"
-                           Margin="0,0,0,8"/>
+                          Style="{StaticResource MaterialDesignHeadline5TextBlock}"
+                          HorizontalAlignment="Center"
+                          Margin="0,0,0,8"/>
                 
                 <TextBlock Text="{Binding GeneralInfo}" 
-                           FontSize="13"
-                           TextAlignment="Center"
-                           Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                          Style="{StaticResource MaterialDesignBody2TextBlock}"
+                          TextAlignment="Center"
+                          TextWrapping="Wrap"/>
+
+                <!-- Краткая сводка -->
+                <UniformGrid Columns="4" Margin="0,12,0,0">
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="{Binding TotalRoutes}" 
+                                  Style="{StaticResource MaterialDesignHeadline4TextBlock}"
+                                  HorizontalAlignment="Center"
+                                  Foreground="{DynamicResource MaterialDesignColorPrimaryBrush}"/>
+                        <TextBlock Text="Всего маршрутов" 
+                                  Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                                  HorizontalAlignment="Center"/>
+                    </StackPanel>
+                    
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="{Binding UniqueLocomotive}" 
+                                  Style="{StaticResource MaterialDesignHeadline4TextBlock}"
+                                  HorizontalAlignment="Center"
+                                  Foreground="{DynamicResource MaterialDesignColorSecondaryBrush}"/>
+                        <TextBlock Text="Локомотивов" 
+                                  Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                                  HorizontalAlignment="Center"/>
+                    </StackPanel>
+                    
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="{Binding DateRange}" 
+                                  Style="{StaticResource MaterialDesignHeadline6TextBlock}"
+                                  HorizontalAlignment="Center"/>
+                        <TextBlock Text="Период данных" 
+                                  Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                                  HorizontalAlignment="Center"/>
+                    </StackPanel>
+                    
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="{Binding AvgConsumption, StringFormat='{}{0:F1} кВт'}" 
+                                  Style="{StaticResource MaterialDesignHeadline6TextBlock}"
+                                  HorizontalAlignment="Center"/>
+                        <TextBlock Text="Средний расход" 
+                                  Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                                  HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </UniformGrid>
             </StackPanel>
         </materialDesign:Card>
 
         <!-- Основное содержимое в табах -->
         <materialDesign:Card Grid.Row="1" 
-                             materialDesign:ElevationAssist.Elevation="Dp1"
-                             Margin="0,0,0,12">
-            
+                           materialDesign:ElevationAssist.Elevation="Dp1"
+                           Margin="0,0,0,12">
             <TabControl Style="{StaticResource MaterialDesignTabControl}">
                 
-                <!-- Общая статистика - аналог Python general statistics -->
+                <!-- Вкладка общей статистики -->
                 <TabItem Header="Общая статистика">
-                    <ScrollViewer Padding="16" VerticalScrollBarVisibility="Auto">
-                        <TextBox Text="{Binding GeneralStatistics, Mode=OneWay}"
-                                 IsReadOnly="True"
-                                 TextWrapping="Wrap"
-                                 AcceptsReturn="True"
-                                 Background="Transparent"
-                                 BorderThickness="0"
-                                 FontFamily="Consolas"
-                                 FontSize="12"/>
+                    <TabItem.HeaderTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="ChartBoxOutline" 
+                                                       Width="16" Height="16" 
+                                                       Margin="0,0,6,0"/>
+                                <TextBlock Text="Общая статистика"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </TabItem.HeaderTemplate>
+                    
+                    <ScrollViewer Style="{StaticResource MaterialDesignScrollViewer}">
+                        <Grid Margin="16">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Ключевые метрики -->
+                            <UniformGrid Grid.Row="0" Columns="3" Margin="0,0,0,16">
+                                <materialDesign:Card Padding="12" Margin="0,0,4,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Экономия" 
+                                                  Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                                                  HorizontalAlignment="Center"/>
+                                        <TextBlock Text="{Binding EconomyPercentage, StringFormat='{}{0:F1}%'}" 
+                                                  Style="{StaticResource MaterialDesignHeadline5TextBlock}"
+                                                  HorizontalAlignment="Center"
+                                                  Foreground="Green"/>
+                                        <TextBlock Text="{Binding EconomyCount, StringFormat='{}{0} маршр.'}" 
+                                                  Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                                                  HorizontalAlignment="Center"/>
+                                    </StackPanel>
+                                </materialDesign:Card>
+                                
+                                <materialDesign:Card Padding="12" Margin="4,0">
+                                    <StackPanel>
+                                        <TextBlock Text="В норме" 
+                                                  Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                                                  HorizontalAlignment="Center"/>
+                                        <TextBlock Text="{Binding NormalPercentage, StringFormat='{}{0:F1}%'}" 
+                                                  Style="{StaticResource MaterialDesignHeadline5TextBlock}"
+                                                  HorizontalAlignment="Center"
+                                                  Foreground="Blue"/>
+                                        <TextBlock Text="{Binding NormalCount, StringFormat='{}{0} маршр.'}" 
+                                                  Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                                                  HorizontalAlignment="Center"/>
+                                    </StackPanel>
+                                </materialDesign:Card>
+                                
+                                <materialDesign:Card Padding="12" Margin="4,0,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Перерасход" 
+                                                  Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                                                  HorizontalAlignment="Center"/>
+                                        <TextBlock Text="{Binding OverrunPercentage, StringFormat='{}{0:F1}%'}" 
+                                                  Style="{StaticResource MaterialDesignHeadline5TextBlock}"
+                                                  HorizontalAlignment="Center"
+                                                  Foreground="Red"/>
+                                        <TextBlock Text="{Binding OverrunCount, StringFormat='{}{0} маршр.'}" 
+                                                  Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                                                  HorizontalAlignment="Center"/>
+                                    </StackPanel>
+                                </materialDesign:Card>
+                            </UniformGrid>
+
+                            <!-- Детальная таблица статистики -->
+                            <DataGrid Grid.Row="1"
+                                     ItemsSource="{Binding DetailedStatistics}"
+                                     Style="{StaticResource MaterialDesignDataGrid}"
+                                     AutoGenerateColumns="False"
+                                     IsReadOnly="True">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Параметр" 
+                                                       Binding="{Binding Parameter}" 
+                                                       Width="200"/>
+                                    <DataGridTextColumn Header="Значение" 
+                                                       Binding="{Binding Value}" 
+                                                       Width="150"/>
+                                    <DataGridTextColumn Header="Единица" 
+                                                       Binding="{Binding Unit}" 
+                                                       Width="80"/>
+                                    <DataGridTextColumn Header="Описание" 
+                                                       Binding="{Binding Description}" 
+                                                       Width="*"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
                     </ScrollViewer>
                 </TabItem>
 
-                <!-- Статистика по участкам - аналог Python sections statistics -->
+                <!-- Вкладка по сериям -->
+                <TabItem Header="По сериям">
+                    <TabItem.HeaderTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="Train" 
+                                                       Width="16" Height="16" 
+                                                       Margin="0,0,6,0"/>
+                                <TextBlock Text="По сериям"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </TabItem.HeaderTemplate>
+                    
+                    <DataGrid ItemsSource="{Binding SeriesStatistics}"
+                             Style="{StaticResource MaterialDesignDataGrid}"
+                             AutoGenerateColumns="False"
+                             IsReadOnly="True"
+                             Margin="8">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Серия" 
+                                               Binding="{Binding Series}" 
+                                               Width="100"/>
+                            <DataGridTextColumn Header="Маршрутов" 
+                                               Binding="{Binding RouteCount}" 
+                                               Width="100"/>
+                            <DataGridTextColumn Header="Средний расход" 
+                                               Binding="{Binding AvgConsumption, StringFormat='{}{0:F1} кВт'}" 
+                                               Width="120"/>
+                            <DataGridTextColumn Header="Отклонение" 
+                                               Binding="{Binding AvgDeviation, StringFormat='{}{0:F1}%'}" 
+                                               Width="100"/>
+                            <DataGridTextColumn Header="Экономия" 
+                                               Binding="{Binding EconomyCount}" 
+                                               Width="80"/>
+                            <DataGridTextColumn Header="Перерасход" 
+                                               Binding="{Binding OverrunCount}" 
+                                               Width="100"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </TabItem>
+
+                <!-- Вкладка по участкам -->
                 <TabItem Header="По участкам">
-                    <ScrollViewer Padding="16" VerticalScrollBarVisibility="Auto">
-                        <TextBox Text="{Binding SectionStatistics, Mode=OneWay}"
-                                 IsReadOnly="True"
-                                 TextWrapping="Wrap"
-                                 AcceptsReturn="True"
-                                 Background="Transparent"
-                                 BorderThickness="0"
-                                 FontFamily="Consolas"
-                                 FontSize="12"/>
-                    </ScrollViewer>
-                </TabItem>
-
-                <!-- Статистика по локомотивам - аналог Python locomotive statistics -->
-                <TabItem Header="По локомотивам">
-                    <ScrollViewer Padding="16" VerticalScrollBarVisibility="Auto">
-                        <TextBox Text="{Binding LocomotiveStatistics, Mode=OneWay}"
-                                 IsReadOnly="True"
-                                 TextWrapping="Wrap"
-                                 AcceptsReturn="True"
-                                 Background="Transparent"
-                                 BorderThickness="0"
-                                 FontFamily="Consolas"
-                                 FontSize="12"/>
-                    </ScrollViewer>
-                </TabItem>
-
-                <!-- Категории отклонений - аналог Python deviation categories -->
-                <TabItem Header="Отклонения">
-                    <ScrollViewer Padding="16" VerticalScrollBarVisibility="Auto">
-                        <StackPanel>
-                            <!-- Круговая диаграмма категорий отклонений -->
-                            <TextBlock Text="Распределение категорий отклонений:" 
-                                       FontWeight="SemiBold" 
-                                       Margin="0,0,0,12"/>
-                            
-                            <!-- Placeholder для будущей круговой диаграммы -->
-                            <Border Background="LightGray" 
-                                    Height="200" 
-                                    CornerRadius="4"
-                                    Margin="0,0,0,16">
-                                <TextBlock Text="Круговая диаграмма\n(будет добавлена в следующей версии)" 
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center"
-                                           TextAlignment="Center"
-                                           Foreground="Gray"/>
-                            </Border>
-
-                            <!-- Детальная статистика отклонений -->
-                            <TextBox Text="{Binding DeviationStatistics, Mode=OneWay}"
-                                     IsReadOnly="True"
-                                     TextWrapping="Wrap"
-                                     AcceptsReturn="True"
-                                     Background="Transparent"
-                                     BorderThickness="0"
-                                     FontFamily="Consolas"
-                                     FontSize="12"/>
-                        </StackPanel>
-                    </ScrollViewer>
+                    <TabItem.HeaderTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="RoadVariant" 
+                                                       Width="16" Height="16" 
+                                                       Margin="0,0,6,0"/>
+                                <TextBlock Text="По участкам"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </TabItem.HeaderTemplate>
+                    
+                    <DataGrid ItemsSource="{Binding SectionStatistics}"
+                             Style="{StaticResource MaterialDesignDataGrid}"
+                             AutoGenerateColumns="False"
+                             IsReadOnly="True"
+                             Margin="8">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Участок" 
+                                               Binding="{Binding SectionName}" 
+                                               Width="*"/>
+                            <DataGridTextColumn Header="Маршрутов" 
+                                               Binding="{Binding RouteCount}" 
+                                               Width="100"/>
+                            <DataGridTextColumn Header="Расстояние" 
+                                               Binding="{Binding Distance, StringFormat='{}{0:F1} км'}" 
+                                               Width="100"/>
+                            <DataGridTextColumn Header="Норма" 
+                                               Binding="{Binding NormConsumption, StringFormat='{}{0:F1} кВт'}" 
+                                               Width="100"/>
+                            <DataGridTextColumn Header="Факт" 
+                                               Binding="{Binding ActualConsumption, StringFormat='{}{0:F1} кВт'}" 
+                                               Width="100"/>
+                            <DataGridTextColumn Header="Отклонение" 
+                                               Binding="{Binding DeviationPercentage, StringFormat='{}{0:F1}%'}" 
+                                               Width="100"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
                 </TabItem>
             </TabControl>
         </materialDesign:Card>
 
-        <!-- Кнопки действий -->
+        <!-- Кнопки управления -->
         <StackPanel Grid.Row="2" 
                     Orientation="Horizontal" 
                     HorizontalAlignment="Right">
             
-            <Button Content="Экспорт в Excel"
-                    Command="{Binding ExportStatisticsCommand}"
+            <Button x:Name="ExportButton"
                     Style="{StaticResource MaterialDesignOutlinedButton}"
-                    Padding="16,8"
-                    Margin="0,0,8,0">
-                <Button.ContentTemplate>
-                    <DataTemplate>
-                        <StackPanel Orientation="Horizontal">
-                            <materialDesign:PackIcon Kind="FileExcel" 
-                                                    Width="16" Height="16"
-                                                    VerticalAlignment="Center"
-                                                    Margin="0,0,6,0"/>
-                            <TextBlock Text="{Binding}" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </DataTemplate>
-                </Button.ContentTemplate>
+                    Command="{Binding ExportStatisticsCommand}"
+                    Margin="0,0,8,0"
+                    Padding="16,8">
+                <Button.Content>
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="Export" 
+                                               Width="16" Height="16" 
+                                               Margin="0,0,6,0"/>
+                        <TextBlock Text="Экспорт" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button.Content>
             </Button>
-
-            <Button Content="Закрыть"
-                    Click="CloseWindow_Click"
+            
+            <Button x:Name="CloseButton"
                     Style="{StaticResource MaterialDesignRaisedButton}"
-                    Padding="20,8"/>
+                    Content="Закрыть"
+                    Command="{Binding CloseCommand}"
+                    IsDefault="True"
+                    Padding="16,8"
+                    MinWidth="100"/>
         </StackPanel>
     </Grid>
+
 </Window>

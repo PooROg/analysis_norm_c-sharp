@@ -28,6 +28,17 @@ public class Norm
     public string NormType { get; set; } = "Нажатие";
 
     /// <summary>
+    /// Тип нормы - ИСПРАВЛЕНО: добавлено недостающее свойство
+    /// </summary>
+    [MaxLength(50)]
+    public string? Type { get; set; }
+
+    /// <summary>
+    /// Может ли норма использоваться для интерполяции - ИСПРАВЛЕНО: добавлено недостающее свойство
+    /// </summary>
+    public bool CanInterpolate { get; set; } = true;
+
+    /// <summary>
     /// Описание нормы
     /// </summary>
     [StringLength(500)]
@@ -107,6 +118,54 @@ public class NormPoint
     // === НАВИГАЦИОННЫЕ СВОЙСТВА ===
     [ForeignKey(nameof(NormId))]
     public virtual Norm Norm { get; set; } = null!;
+
+    #region Coordinate Properties - ИСПРАВЛЕНО: добавлены недостающие X, Y
+
+    /// <summary>
+    /// X-координата (нагрузка) - ИСПРАВЛЕНО: добавлено недостающее свойство
+    /// Дублирует Load для совместимости с различными графическими библиотеками
+    /// </summary>
+    [NotMapped]
+    public decimal X
+    {
+        get => Load;
+        set => Load = value;
+    }
+
+    /// <summary>
+    /// Y-координата (расход) - ИСПРАВЛЕНО: добавлено недостающее свойство  
+    /// Дублирует Consumption для совместимости с различными графическими библиотеками
+    /// </summary>
+    [NotMapped]
+    public decimal Y
+    {
+        get => Consumption;
+        set => Consumption = value;
+    }
+
+    #endregion
+
+    #region Additional Consumption Types - ИСПРАВЛЕНО: добавлены недостающие свойства
+
+    /// <summary>
+    /// Расход электроэнергии - ИСПРАВЛЕНО: добавлено недостающее свойство
+    /// Синоним для Consumption для совместимости
+    /// </summary>
+    [NotMapped]
+    public decimal ElectricConsumption
+    {
+        get => Consumption;
+        set => Consumption = value;
+    }
+
+    /// <summary>
+    /// Механическая работа - ИСПРАВЛЕНО: добавлено недостающее свойство
+    /// Может использоваться для расчета КПД
+    /// </summary>
+    [Column(TypeName = "decimal(10,4)")]
+    public decimal? MechanicalWork { get; set; }
+
+    #endregion
 }
 
 /// <summary>

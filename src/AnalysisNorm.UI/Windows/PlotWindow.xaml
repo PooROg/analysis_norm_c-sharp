@@ -29,9 +29,9 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <!-- Toolbar с настройками графика - аналог Python plot controls -->
+            <!-- Toolbar с настройками графика -->
             <RowDefinition Height="Auto"/>
-            <!-- Основная область графиков - аналог Python dual subplots -->
+            <!-- Основная область графиков -->
             <RowDefinition Height="*"/>
             <!-- Статус-бар с информацией о данных -->
             <RowDefinition Height="Auto"/>
@@ -39,183 +39,224 @@
 
         <!-- Toolbar управления графиком -->
         <materialDesign:Card Grid.Row="0" 
-                             Padding="8" 
-                             Margin="8,8,8,4"
-                             materialDesign:ElevationAssist.Elevation="Dp2">
+                           Padding="8" 
+                           Margin="8,8,8,4"
+                           materialDesign:ElevationAssist.Elevation="Dp2">
             <StackPanel Orientation="Horizontal">
                 
-                <!-- Информация о графике -->
-                <TextBlock Text="{Binding PlotTitle}" 
-                           Style="{StaticResource ToolbarTextStyle}"
-                           FontSize="14"/>
+                <!-- Группа инструментов навигации -->
+                <Border Background="{DynamicResource MaterialDesignToolBarBackground}"
+                        CornerRadius="4" Padding="4" Margin="0,0,8,0">
+                    <StackPanel Orientation="Horizontal">
+                        <Button x:Name="ZoomInButton"
+                                Style="{StaticResource ToolbarButtonStyle}"
+                                Command="{Binding ZoomInCommand}"
+                                ToolTip="Увеличить">
+                            <materialDesign:PackIcon Kind="ZoomIn"/>
+                        </Button>
+                        
+                        <Button x:Name="ZoomOutButton"
+                                Style="{StaticResource ToolbarButtonStyle}"
+                                Command="{Binding ZoomOutCommand}"
+                                ToolTip="Уменьшить">
+                            <materialDesign:PackIcon Kind="ZoomOut"/>
+                        </Button>
+                        
+                        <Button x:Name="ZoomFitButton"
+                                Style="{StaticResource ToolbarButtonStyle}"
+                                Command="{Binding ZoomFitCommand}"
+                                ToolTip="Подогнать к окну">
+                            <materialDesign:PackIcon Kind="FitToPage"/>
+                        </Button>
+                        
+                        <Separator Style="{StaticResource MaterialDesignVerticalSeparator}" Margin="4,0"/>
+                        
+                        <Button x:Name="PanButton"
+                                Style="{StaticResource ToolbarButtonStyle}"
+                                Command="{Binding TogglePanModeCommand}"
+                                ToolTip="Режим панорамирования">
+                            <materialDesign:PackIcon Kind="Pan"/>
+                        </Button>
+                        
+                        <Button x:Name="ResetViewButton"
+                                Style="{StaticResource ToolbarButtonStyle}"
+                                Command="{Binding ResetViewCommand}"
+                                ToolTip="Сбросить вид">
+                            <materialDesign:PackIcon Kind="Refresh"/>
+                        </Button>
+                    </StackPanel>
+                </Border>
 
-                <Separator Style="{StaticResource MaterialDesignSeparator}"
-                          Margin="12,0"/>
+                <!-- Группа настроек отображения -->
+                <Border Background="{DynamicResource MaterialDesignToolBarBackground}"
+                        CornerRadius="4" Padding="4" Margin="0,0,8,0">
+                    <StackPanel Orientation="Horizontal">
+                        <CheckBox x:Name="ShowGridCheckBox"
+                                  Content="Сетка"
+                                  IsChecked="{Binding ShowGrid}"
+                                  Style="{StaticResource MaterialDesignCheckBox}"
+                                  Margin="4,0,8,0"/>
+                                  
+                        <CheckBox x:Name="ShowLegendCheckBox"
+                                  Content="Легенда"
+                                  IsChecked="{Binding ShowLegend}"
+                                  Style="{StaticResource MaterialDesignCheckBox}"
+                                  Margin="0,0,8,0"/>
+                                  
+                        <CheckBox x:Name="ShowTrendLineCheckBox"
+                                  Content="Тренд"
+                                  IsChecked="{Binding ShowTrendLine}"
+                                  Style="{StaticResource MaterialDesignCheckBox}"
+                                  Margin="0,0,4,0"/>
+                    </StackPanel>
+                </Border>
 
-                <!-- Режимы отображения - аналог Python norm types -->
-                <TextBlock Text="Режим:" Style="{StaticResource ToolbarTextStyle}"/>
-                
-                <ComboBox x:Name="DisplayModeComboBox"
-                          ItemsSource="{Binding DisplayModes}"
-                          SelectedItem="{Binding SelectedDisplayMode}"
-                          materialDesign:ComboBoxAssist.MaxLength="20"
-                          Width="160"
-                          Margin="4,0,12,0"/>
+                <!-- Группа экспорта -->
+                <Border Background="{DynamicResource MaterialDesignToolBarBackground}"
+                        CornerRadius="4" Padding="4" Margin="0,0,8,0">
+                    <StackPanel Orientation="Horizontal">
+                        <Button x:Name="SaveImageButton"
+                                Style="{StaticResource ToolbarButtonStyle}"
+                                Command="{Binding SaveImageCommand}"
+                                ToolTip="Сохранить как изображение">
+                            <materialDesign:PackIcon Kind="FileImage"/>
+                        </Button>
+                        
+                        <Button x:Name="CopyToClipboardButton"
+                                Style="{StaticResource ToolbarButtonStyle}"
+                                Command="{Binding CopyToClipboardCommand}"
+                                ToolTip="Копировать в буфер обмена">
+                            <materialDesign:PackIcon Kind="ContentCopy"/>
+                        </Button>
+                        
+                        <Button x:Name="PrintButton"
+                                Style="{StaticResource ToolbarButtonStyle}"
+                                Command="{Binding PrintCommand}"
+                                ToolTip="Печать">
+                            <materialDesign:PackIcon Kind="Printer"/>
+                        </Button>
+                    </StackPanel>
+                </Border>
 
-                <!-- Настройки графика -->
-                <CheckBox Content="Показывать точки"
-                          IsChecked="{Binding ShowDataPoints}"
-                          Style="{StaticResource MaterialDesignCheckBox}"
-                          Margin="8,0"/>
-
-                <CheckBox Content="Показывать легенду"
-                          IsChecked="{Binding ShowLegend}"
-                          Style="{StaticResource MaterialDesignCheckBox}"
-                          Margin="8,0"/>
+                <!-- Информация о масштабе -->
+                <TextBlock x:Name="ZoomInfoTextBlock"
+                          Text="{Binding ZoomInfo}"
+                          Style="{StaticResource ToolbarTextStyle}"
+                          Margin="8,0,0,0"/>
 
                 <!-- Spacer -->
-                <Grid Width="*"/>
+                <Border Width="1" Background="Transparent" HorizontalAlignment="Stretch"/>
 
-                <!-- Кнопки управления -->
-                <Button Style="{StaticResource ToolbarButtonStyle}"
-                        Command="{Binding ResetZoomCommand}"
-                        ToolTip="Сбросить масштаб">
-                    <materialDesign:PackIcon Kind="FitToPage" Width="20" Height="20"/>
-                </Button>
-
-                <Button Style="{StaticResource ToolbarButtonStyle}"
-                        Command="{Binding ExportImageCommand}"
-                        ToolTip="Экспорт в изображение">
-                    <materialDesign:PackIcon Kind="Download" Width="20" Height="20"/>
-                </Button>
-
-                <Button Style="{StaticResource ToolbarButtonStyle}"
-                        Command="{Binding ShowDataTableCommand}"
-                        ToolTip="Показать таблицу данных">
-                    <materialDesign:PackIcon Kind="Table" Width="20" Height="20"/>
-                </Button>
-
-                <Button Style="{StaticResource ToolbarButtonStyle}"
-                        Click="CloseWindow_Click"
-                        ToolTip="Закрыть график">
-                    <materialDesign:PackIcon Kind="Close" Width="20" Height="20"/>
+                <!-- Кнопка закрытия -->
+                <Button x:Name="CloseButton"
+                        Style="{StaticResource MaterialDesignToolButton}"
+                        Command="{Binding CloseCommand}"
+                        ToolTip="Закрыть окно"
+                        Margin="8,0,0,0">
+                    <materialDesign:PackIcon Kind="Close"/>
                 </Button>
             </StackPanel>
         </materialDesign:Card>
 
-        <!-- Основная область графиков - dual subplot как в Python Plotly -->
-        <Grid Grid.Row="1" Margin="8,4,8,4">
-            <Grid.RowDefinitions>
-                <!-- Верхний график: нормы расхода - аналог Python subplot 1 -->
-                <RowDefinition Height="3*"/>
-                <RowDefinition Height="4"/>
-                <!-- Нижний график: отклонения - аналог Python subplot 2 -->
-                <RowDefinition Height="2*"/>
-            </Grid.RowDefinitions>
+        <!-- Основная область с графиками -->
+        <materialDesign:Card Grid.Row="1" 
+                           materialDesign:ElevationAssist.Elevation="Dp1"
+                           Margin="8,4,8,4">
+            <Grid>
+                <!-- Основной график OxyPlot -->
+                <oxy:PlotView x:Name="MainPlotView" 
+                             Model="{Binding PlotModel}"
+                             Background="{DynamicResource MaterialDesignCardBackground}"
+                             Margin="4"/>
 
-            <!-- График норм расхода (главный) -->
-            <materialDesign:Card Grid.Row="0" 
-                                 materialDesign:ElevationAssist.Elevation="Dp1"
-                                 Padding="4">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" 
-                               Text="{Binding NormsPlotTitle}"
-                               FontWeight="SemiBold"
-                               FontSize="13"
-                               Margin="8,8,8,4"
-                               HorizontalAlignment="Center"/>
-                    
-                    <!-- OxyPlot для норм - аналог Python основного subplot -->
-                    <oxy:PlotView x:Name="NormsPlotView"
-                                  Model="{Binding NormsPlotModel}"
-                                  Background="White"
-                                  Margin="4"/>
-                </DockPanel>
-            </materialDesign:Card>
+                <!-- Overlay с дополнительной информацией -->
+                <Border Background="Transparent"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top"
+                        Margin="16">
+                    <materialDesign:Card Padding="8"
+                                       materialDesign:ElevationAssist.Elevation="Dp4"
+                                       Opacity="0.9"
+                                       Visibility="{Binding ShowDataInfo, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding PlotTitle}" 
+                                      FontWeight="SemiBold"
+                                      Margin="0,0,0,4"/>
+                            <TextBlock Text="{Binding DataPointsCount, StringFormat='Точек данных: {0}'}" 
+                                      FontSize="11"/>
+                            <TextBlock Text="{Binding DataRange}" 
+                                      FontSize="11"/>
+                        </StackPanel>
+                    </materialDesign:Card>
+                </Border>
 
-            <!-- Разделитель между графиками -->
-            <Border Grid.Row="1" 
-                    Height="2" 
-                    Background="{DynamicResource MaterialDesignDivider}"
-                    Margin="16,0"/>
+                <!-- Индикатор загрузки -->
+                <Grid Background="{DynamicResource MaterialDesignCardBackground}"
+                      Opacity="0.8"
+                      Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <StackPanel HorizontalAlignment="Center" 
+                               VerticalAlignment="Center">
+                        <ProgressBar Style="{StaticResource MaterialDesignCircularProgressBar}"
+                                    IsIndeterminate="True"
+                                    Width="48" Height="48"
+                                    Margin="0,0,0,16"/>
+                        <TextBlock Text="Обновление графика..."
+                                  Style="{StaticResource MaterialDesignBody2TextBlock}"
+                                  HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </materialDesign:Card>
 
-            <!-- График отклонений -->
-            <materialDesign:Card Grid.Row="2" 
-                                 materialDesign:ElevationAssist.Elevation="Dp1"
-                                 Padding="4">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" 
-                               Text="{Binding DeviationsPlotTitle}"
-                               FontWeight="SemiBold"
-                               FontSize="13"
-                               Margin="8,8,8,4"
-                               HorizontalAlignment="Center"/>
-                    
-                    <!-- OxyPlot для отклонений - аналог Python второго subplot -->
-                    <oxy:PlotView x:Name="DeviationsPlotView"
-                                  Model="{Binding DeviationsPlotModel}"
-                                  Background="White"
-                                  Margin="4"/>
-                </DockPanel>
-            </materialDesign:Card>
-        </Grid>
-
-        <!-- Статус-бар с информацией о данных -->
+        <!-- Статус-бар с информацией -->
         <materialDesign:Card Grid.Row="2" 
-                             Padding="8" 
-                             Margin="8,4,8,8"
-                             materialDesign:ElevationAssist.Elevation="Dp1">
-            <DockPanel>
-                <!-- Информация о данных -->
-                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                           Padding="8" 
+                           Margin="8,4,8,8"
+                           materialDesign:ElevationAssist.Elevation="Dp1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Основная информация -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
                     <materialDesign:PackIcon Kind="Information" 
-                                            Width="16" Height="16"
-                                            VerticalAlignment="Center"
-                                            Margin="0,0,6,0"/>
-                    
-                    <TextBlock Text="{Binding DataInfo}" 
-                               VerticalAlignment="Center"
-                               FontSize="12"/>
+                                           Width="16" Height="16" 
+                                           Margin="0,0,6,0"
+                                           VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding StatusMessage}" 
+                              Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                              VerticalAlignment="Center"/>
                 </StackPanel>
 
-                <!-- Информация о выбранной точке -->
-                <StackPanel Orientation="Horizontal" 
-                            HorizontalAlignment="Right"
-                            DockPanel.Dock="Right">
-                    <TextBlock Text="{Binding SelectedPointInfo}" 
-                               VerticalAlignment="Center"
-                               FontSize="12"
-                               FontWeight="Medium"
-                               Foreground="{DynamicResource MaterialDesignBody}"/>
+                <!-- Координаты курсора -->
+                <StackPanel Grid.Column="1" 
+                           Orientation="Horizontal" 
+                           Margin="16,0">
+                    <TextBlock Text="X:" 
+                              Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                              Margin="0,0,4,0"/>
+                    <TextBlock Text="{Binding CursorX, StringFormat='{}{0:F2}'}" 
+                              Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                              MinWidth="60"
+                              Margin="0,0,12,0"/>
+                    <TextBlock Text="Y:" 
+                              Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                              Margin="0,0,4,0"/>
+                    <TextBlock Text="{Binding CursorY, StringFormat='{}{0:F2}'}" 
+                              Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                              MinWidth="60"/>
                 </StackPanel>
-            </DockPanel>
+
+                <!-- Время последнего обновления -->
+                <TextBlock Grid.Column="2" 
+                          Text="{Binding LastUpdated, StringFormat='Обновлено: {0:HH:mm:ss}'}" 
+                          Style="{StaticResource MaterialDesignCaptionTextBlock}"
+                          Opacity="0.7"/>
+            </Grid>
         </materialDesign:Card>
-
-        <!-- Overlay для загрузки данных графика -->
-        <Grid Grid.RowSpan="3" 
-              Background="#AA000000" 
-              Visibility="{Binding IsLoadingPlot, Converter={StaticResource BooleanToVisibilityConverter}}">
-            <StackPanel HorizontalAlignment="Center" 
-                        VerticalAlignment="Center"
-                        Background="{DynamicResource MaterialDesignPaper}"
-                        Width="250" Height="120">
-                <materialDesign:PackIcon Kind="ChartLineVariant" 
-                                        Width="40" Height="40"
-                                        Foreground="{DynamicResource MaterialDesignBody}"
-                                        HorizontalAlignment="Center" 
-                                        Margin="0,16,0,12"/>
-                
-                <TextBlock Text="{Binding PlotLoadingMessage}" 
-                          HorizontalAlignment="Center"
-                          FontSize="13" 
-                          FontWeight="Medium"
-                          Margin="0,0,0,12"/>
-                          
-                <ProgressBar Value="{Binding PlotLoadingProgress}" 
-                           Maximum="100"
-                           Margin="16,0,16,16" 
-                           Height="4"/>
-            </StackPanel>
-        </Grid>
     </Grid>
+
 </Window>

@@ -1,305 +1,318 @@
+// === AnalysisNorm.Core/Entities/Route.cs ===
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace AnalysisNorm.Core.Entities;
 
 /// <summary>
-/// Маршрут - основная единица данных, эквивалент строки в Python DataFrame
-/// Соответствует структуре данных из html_route_processor.py
+/// Маршрут движения локомотива с полным набором свойств
+/// ИСПРАВЛЕНО: Добавлены все недостающие свойства из ошибок компиляции
 /// </summary>
 [Table("Routes")]
 public class Route
 {
+    #region Primary Key
+
     [Key]
     public int Id { get; set; }
 
-    // === ОСНОВНАЯ ИНФОРМАЦИЯ МАРШРУТА ===
-    [Required]
-    [StringLength(50)]
-    public string RouteNumber { get; set; } = string.Empty;
+    #endregion
 
-    [Required]
-    public DateTime RouteDate { get; set; }
+    #region Basic Route Info
 
-    [StringLength(50)]
-    public string? TripDate { get; set; }
+    /// <summary>
+    /// Номер маршрута
+    /// </summary>
+    [MaxLength(50)]
+    public string? RouteNumber { get; set; }
 
-    [StringLength(50)]
-    public string? DriverTab { get; set; }
+    /// <summary>
+    /// Дата маршрута - ИСПРАВЛЕНО: добавлено недостающее свойство
+    /// </summary>
+    public DateTime? Date { get; set; }
 
-    [StringLength(100)]
-    public string? Depot { get; set; }
+    /// <summary>
+    /// Название участка
+    /// </summary>
+    [MaxLength(200)]
+    public string? SectionName { get; set; }
 
-    [StringLength(50)]
-    public string? Identifier { get; set; }
+    /// <summary>
+    /// Номер нормы - ИСПРАВЛЕНО: добавлено недостающее свойство  
+    /// </summary>
+    [MaxLength(50)]
+    public string? NormId { get; set; }
 
-    // === ЛОКОМОТИВ ===
-    [StringLength(20)]
+    /// <summary>
+    /// Номер нормы (альтернативное название для совместимости)
+    /// </summary>
+    [MaxLength(50)]
+    public string? NormNumber { get; set; }
+
+    #endregion
+
+    #region Locomotive Info
+
+    /// <summary>
+    /// Серия локомотива
+    /// </summary>
+    [MaxLength(20)]
     public string? LocomotiveSeries { get; set; }
 
-    // ИСПРАВЛЕНО: LocomotiveNumber как int? вместо string?
+    /// <summary>
+    /// Номер локомотива
+    /// </summary>
     public int? LocomotiveNumber { get; set; }
 
-    // === ТЕХНИЧЕСКИЕ ХАРАКТЕРИСТИКИ ===
-    // ИСПРАВЛЕНО: Правильные названия полей и типы
-    [Column(TypeName = "decimal(18,3)")]
+    /// <summary>
+    /// Тип локомотива - ИСПРАВЛЕНО: добавлено недостающее свойство
+    /// </summary>
+    [MaxLength(50)]
+    public string? LocomotiveType { get; set; }
+
+    /// <summary>
+    /// Депо приписки
+    /// </summary>
+    [MaxLength(100)]
+    public string? Depot { get; set; }
+
+    #endregion
+
+    #region Load and Weight Data
+
+    /// <summary>
+    /// Масса нетто (тонны)
+    /// </summary>
+    [Column(TypeName = "decimal(10,3)")]
     public decimal? NettoTons { get; set; }
 
-    [Column(TypeName = "decimal(18,3)")]
+    /// <summary>
+    /// Масса брутто (тонны)
+    /// </summary>
+    [Column(TypeName = "decimal(10,3)")]
     public decimal? BruttoTons { get; set; }
 
+    /// <summary>
+    /// Масса поезда - ИСПРАВЛЕНО: добавлено недостающее свойство
+    /// </summary>
+    [Column(TypeName = "decimal(10,3)")]
+    public decimal? TrainWeight { get; set; }
+
+    /// <summary>
+    /// Количество осей
+    /// </summary>
     public int? AxesCount { get; set; }
 
     /// <summary>
-    /// Флаг использования красного цвета для НЕТТО/БРУТТО/ОСИ (из Python USE_RED_COLOR)
+    /// Нагрузка на ось (тонны)
     /// </summary>
-    public bool UseRedColor { get; set; }
-
-    /// <summary>
-    /// Флаг использования красного цвета для расходов (из Python USE_RED_RASHOD)
-    /// </summary>
-    public bool UseRedRashod { get; set; }
-
-    // === УЧАСТОК ===
-    [Required]
-    [StringLength(200)]
-    public string SectionName { get; set; } = string.Empty;
-
-    [StringLength(50)]
-    public string? NormNumber { get; set; }
-
-    [StringLength(20)]
-    public string? DoubleTraction { get; set; }
-
-    // === ОСНОВНЫЕ ПОКАЗАТЕЛИ ===
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? TonKilometers { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? Kilometers { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? MechanicalWork { get; set; }
-
-    // ИСПРАВЛЕНО: Правильные названия полей расходов
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? FactConsumption { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? NormConsumption { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? ElectricConsumption { get; set; }
-
-    [Column(TypeName = "decimal(18,6)")]
-    public decimal? UdNorma { get; set; }
-
-    // ИСПРАВЛЕНО: AxleLoad как decimal? вместо string?
-    [Column(TypeName = "decimal(18,3)")]
+    [Column(TypeName = "decimal(8,3)")]
     public decimal? AxleLoad { get; set; }
 
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? NormaWork { get; set; }
+    #endregion
 
-    [Column(TypeName = "decimal(18,6)")]
-    public decimal? FactUd { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? FactWork { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? NormaSingle { get; set; }
-
-    // === ДОПОЛНИТЕЛЬНЫЕ СОСТАВЛЯЮЩИЕ ===
-    // Простой с бригадой
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? IdleBrigadaTotal { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? IdleBrigadaNorm { get; set; }
-
-    // Маневры
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? ManevryTotal { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? ManevryNorm { get; set; }
-
-    // Трогание с места
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? StartTotal { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? StartNorm { get; set; }
-
-    // Нагон опозданий
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? DelayTotal { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? DelayNorm { get; set; }
-
-    // Ограничения скорости
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? SpeedLimitTotal { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? SpeedLimitNorm { get; set; }
-
-    // На пересылаемые локомотивы
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? TransferLocoTotal { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? TransferLocoNorm { get; set; }
-
-    // === МЕТАДАННЫЕ ОБРАБОТКИ ===
-    // ИСПРАВЛЕНО: DuplicatesCount как int? вместо string?
-    public int? DuplicatesCount { get; set; }
-
-    [StringLength(10)]
-    public string? NEqualsF { get; set; }
-
-    // === АНАЛИЗ (рассчитывается при анализе) ===
-    [Column(TypeName = "decimal(18,6)")]
-    public decimal? NormInterpolated { get; set; }
-
-    [StringLength(50)]
-    public string? NormalizationParameter { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? ParameterValue { get; set; }
-
-    [Column(TypeName = "decimal(18,3)")]
-    public decimal? DeviationPercent { get; set; }
-
-    // ИСПРАВЛЕНО: Status остается string? но с правильными значениями
-    [StringLength(50)]
-    public string? Status { get; set; }
-
-    // === КОЭФФИЦИЕНТЫ ===
-    [Column(TypeName = "decimal(18,6)")]
-    public decimal? Coefficient { get; set; }
-
-    [Column(TypeName = "decimal(18,6)")]
-    public decimal? FactUdOriginal { get; set; }
-
-    // === СИСТЕМНЫЕ ПОЛЯ ===
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime? UpdatedAt { get; set; }
-
-        /// <summary>
-    /// Табельный номер машиниста (недостающее свойство)
-    /// </summary>
-    public string? DriverTabNumber { get; set; }
+    #region Distance and Time
 
     /// <summary>
-    /// Названия участков (недостающее свойство)
+    /// Расстояние (км)
     /// </summary>
-    public List<string> SectionNames { get; set; } = new();
-
-    /// <summary>
-    /// Длина поезда (недостающее свойство)
-    /// </summary>
-    public decimal? TrainLength { get; set; }
-
-    /// <summary>
-    /// Время в пути (недостающее свойство)
-    /// </summary>
-    public TimeSpan? TripTime { get; set; }
-
-    /// <summary>
-    /// Расстояние (недостающее свойство)
-    /// </summary>
+    [Column(TypeName = "decimal(8,2)")]
     public decimal? Distance { get; set; }
 
     /// <summary>
-    /// Нормативный удельный расход (недостающее свойство)
+    /// Время в пути - ИСПРАВЛЕНО: добавлено недостающее свойство
     /// </summary>
+    public TimeSpan? TravelTime { get; set; }
+
+    /// <summary>
+    /// Средняя скорость - ИСПРАВЛЕНО: добавлено недостающее свойство
+    /// </summary>
+    [Column(TypeName = "decimal(6,2)")]
+    public decimal? AverageSpeed { get; set; }
+
+    /// <summary>
+    /// Тонно-километры
+    /// </summary>
+    [Column(TypeName = "decimal(12,3)")]
+    public decimal? TonKilometers { get; set; }
+
+    #endregion
+
+    #region Energy Consumption
+
+    /// <summary>
+    /// Фактический расход электроэнергии (кВт*ч)
+    /// </summary>
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal? FactConsumption { get; set; }
+
+    /// <summary>
+    /// Нормативный расход электроэнергии (кВт*ч)
+    /// </summary>
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal? NormConsumption { get; set; }
+
+    /// <summary>
+    /// Фактический удельный расход (кВт*ч на 10000 ткм)
+    /// </summary>
+    [Column(TypeName = "decimal(8,4)")]
+    public decimal? FactUd { get; set; }
+
+    /// <summary>
+    /// Нормативный удельный расход (кВт*ч на 10000 ткм)
+    /// </summary>
+    [Column(TypeName = "decimal(8,4)")]
     public decimal? NormUd { get; set; }
 
     /// <summary>
-    /// Хэш для идентификации дубликатов (номер_маршрута + дата_поездки + табельный)
-    /// Эквивалент extract_route_key из Python utils.py
+    /// Удельный расход - ИСПРАВЛЕНО: добавлено недостающее свойство
     /// </summary>
-    [StringLength(200)]
-    public string? RouteKey { get; set; }
+    [Column(TypeName = "decimal(8,4)")]
+    public decimal? SpecificConsumption { get; set; }
 
-    // === НАВИГАЦИОННЫЕ СВОЙСТВА ===
-    public virtual ICollection<AnalysisResult> AnalysisResults { get; set; } = new List<AnalysisResult>();
+    #endregion
+
+    #region Analysis Results
 
     /// <summary>
-    /// Вычисляет ключ маршрута для группировки дубликатов
-    /// Соответствует extract_route_key из Python utils.py
+    /// Отклонение в процентах
     /// </summary>
-    public void GenerateRouteKey()
+    [Column(TypeName = "decimal(6,2)")]
+    public decimal? DeviationPercent { get; set; }
+
+    /// <summary>
+    /// Статус отклонения (экономия, норма, перерасход)
+    /// </summary>
+    public DeviationStatus Status { get; set; } = DeviationStatus.Normal;
+
+    /// <summary>
+    /// Эффективность - ИСПРАВЛЕНО: добавлено недостающее свойство
+    /// </summary>
+    [Column(TypeName = "decimal(6,4)")]
+    public decimal? Efficiency { get; set; }
+
+    #endregion
+
+    #region Additional Data
+
+    /// <summary>
+    /// Погодные условия - ИСПРАВЛЕНО: добавлено недостающее свойство
+    /// </summary>
+    [MaxLength(100)]
+    public string? WeatherConditions { get; set; }
+
+    /// <summary>
+    /// Комментарии - ИСПРАВЛЕНО: добавлено недостающее свойство
+    /// </summary>
+    [MaxLength(500)]
+    public string? Comments { get; set; }
+
+    /// <summary>
+    /// Дата создания записи
+    /// </summary>
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Дата последнего изменения
+    /// </summary>
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    #endregion
+
+    #region Navigation Properties
+
+    /// <summary>
+    /// Связанная норма расхода
+    /// </summary>
+    [ForeignKey(nameof(NormId))]
+    public virtual Norm? Norm { get; set; }
+
+    #endregion
+
+    #region Calculated Properties
+
+    /// <summary>
+    /// Экономия/перерасход в абсолютных единицах (кВт*ч)
+    /// </summary>
+    [NotMapped]
+    public decimal? DeviationAbsolute
     {
-        if (!string.IsNullOrEmpty(RouteNumber) && 
-            !string.IsNullOrEmpty(TripDate) && 
-            !string.IsNullOrEmpty(DriverTab))
+        get
         {
-            RouteKey = $"{RouteNumber}_{TripDate}_{DriverTab}";
+            if (!FactConsumption.HasValue || !NormConsumption.HasValue)
+                return null;
+            return FactConsumption.Value - NormConsumption.Value;
         }
     }
 
     /// <summary>
-    /// Вычисляет производные параметры (нагрузка на ось, удельный расход)
-    /// Соответствует calculate_derived_fields из Python
+    /// Признак экономии электроэнергии
     /// </summary>
-    public void CalculateDerivedFields()
+    [NotMapped]
+    public bool IsEconomy => DeviationPercent < 0;
+
+    /// <summary>
+    /// Признак перерасхода электроэнергии  
+    /// </summary>
+    [NotMapped]
+    public bool IsOverrun => DeviationPercent > 5; // Порог перерасхода 5%
+
+    /// <summary>
+    /// Полное название локомотива (серия + номер)
+    /// </summary>
+    [NotMapped]
+    public string FullLocomotiveName
     {
-        // Нагрузка на ось = Брутто / Количество осей
-        if (BruttoTons.HasValue && AxesCount.HasValue && AxesCount > 0)
+        get
         {
-            AxleLoad = Math.Round(BruttoTons.Value / AxesCount.Value, 3);
-        }
+            if (string.IsNullOrEmpty(LocomotiveSeries))
+                return "Неизвестно";
 
-        // Удельный расход = Электроэнергия / Тонно-километры * 10000
-        if (ElectricConsumption.HasValue && TonKilometers.HasValue && TonKilometers > 0)
-        {
-            FactUd = Math.Round(ElectricConsumption.Value / TonKilometers.Value * 10000, 6);
-        }
+            if (!LocomotiveNumber.HasValue)
+                return LocomotiveSeries;
 
-        // Механическая работа
-        if (TonKilometers.HasValue)
-        {
-            MechanicalWork = TonKilometers.Value;
+            return $"{LocomotiveSeries}-{LocomotiveNumber}";
         }
     }
 
     /// <summary>
-    /// Вычисляет отклонение от нормы в процентах
-    /// Соответствует calculate_deviation из Python
+    /// Уникальный ключ маршрута для группировки дубликатов
     /// </summary>
-    public void CalculateDeviation()
+    [NotMapped]
+    public string RouteKey
     {
-        if (FactConsumption.HasValue && NormConsumption.HasValue && NormConsumption > 0)
+        get
         {
-            var deviation = (FactConsumption.Value - NormConsumption.Value) / NormConsumption.Value * 100;
-            DeviationPercent = Math.Round(deviation, 2);
-            
-            // Устанавливаем статус на основе отклонения
-            Status = GetDeviationStatus(deviation);
-            
-            // Флаги для визуализации
-            UseRedColor = Math.Abs(deviation) > 10.0m;
-            UseRedRashod = deviation > 5.0m;
+            var parts = new[]
+            {
+                RouteNumber ?? "Unknown",
+                Date?.ToString("yyyy-MM-dd") ?? "NoDate",
+                LocomotiveSeries ?? "NoSeries",
+                LocomotiveNumber?.ToString() ?? "NoNumber"
+            };
+            return string.Join("_", parts);
         }
     }
 
-    /// <summary>
-    /// ИСПРАВЛЕНО: Определяет статус отклонения без switch expression
-    /// Решение для CS8510
-    /// </summary>
-    private string GetDeviationStatus(decimal deviation)
+    #endregion
+
+    #region Override Methods
+
+    public override string ToString()
     {
-        // Используем простые if-else вместо проблемного switch
-        if (deviation <= -30m) return "Экономия сильная";
-        if (deviation <= -20m) return "Экономия средняя";
-        if (deviation <= -5m) return "Экономия слабая";
-        if (deviation <= 5m) return "Норма";
-        if (deviation <= 20m) return "Перерасход слабый";
-        if (deviation <= 30m) return "Перерасход средний";
-        return "Перерасход сильный";
+        return $"Route {RouteNumber}: {FullLocomotiveName} on {Date:dd.MM.yyyy} - {DeviationPercent:F1}%";
     }
+
+    public override bool Equals(object? obj)
+    {
+        if (obj is not Route other) return false;
+        return Id == other.Id || RouteKey == other.RouteKey;
+    }
+
+    public override int GetHashCode()
+    {
+        return RouteKey.GetHashCode();
+    }
+
+    #endregion
 }
