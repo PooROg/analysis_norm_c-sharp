@@ -1,62 +1,62 @@
 // Infrastructure/Mathematics/StatusClassifier.cs
+using AnalysisNorm.Models.Domain;
+
 namespace AnalysisNorm.Infrastructure.Mathematics;
 
 /// <summary>
-/// Классификатор статусов отклонений - точная копия Python StatusClassifier
-/// Static class для упрощения архитектуры и совместимости с существующим проектом
+/// Классификатор статусов отклонений норм
+/// Определяет критичность отклонения на основе процентного значения
 /// </summary>
 public static class StatusClassifier
 {
-    /// <summary>
-    /// Пороговые значения отклонений в процентах (из Python core/utils.py)
-    /// </summary>
-    public static class Thresholds
-    {
-        public const decimal ExcellentMax = 5.0m;      // До 5% - отлично
-        public const decimal GoodMax = 10.0m;          // До 10% - хорошо
-        public const decimal AcceptableMax = 15.0m;    // До 15% - приемлемо
-        public const decimal PoorMax = 25.0m;          // До 25% - плохо
-        // Свыше 25% - критично
-    }
+    // Константы для границ отклонений (соответствуют Python версии)
+    private const decimal ExcellentThreshold = 5m;
+    private const decimal GoodThreshold = 10m;
+    private const decimal AcceptableThreshold = 20m;
+    private const decimal PoorThreshold = 30m;
 
     /// <summary>
-    /// Классифицирует статус отклонения по процентному значению
-    /// Точная копия Python алгоритма из StatusClassifier.classify_deviation
+    /// Классифицирует отклонение по процентному значению
     /// </summary>
+    /// <param name="deviationPercent">Процент отклонения (может быть отрицательным)</param>
+    /// <returns>Статус отклонения</returns>
     public static DeviationStatus ClassifyDeviation(decimal deviationPercent)
     {
         var absDeviation = Math.Abs(deviationPercent);
-
+        
         return absDeviation switch
         {
-            <= Thresholds.ExcellentMax => DeviationStatus.Excellent,
-            <= Thresholds.GoodMax => DeviationStatus.Good,
-            <= Thresholds.AcceptableMax => DeviationStatus.Acceptable,
-            <= Thresholds.PoorMax => DeviationStatus.Poor,
+            <= ExcellentThreshold => DeviationStatus.Excellent,
+            <= GoodThreshold => DeviationStatus.Good,
+            <= AcceptableThreshold => DeviationStatus.Acceptable,
+            <= PoorThreshold => DeviationStatus.Poor,
             _ => DeviationStatus.Critical
         };
     }
 
     /// <summary>
-    /// Получает цвет для статуса (для UI и Excel экспорта)
-    /// Соответствует Python visualizations.py цветовой схеме
+    /// Получает цвет для статуса (для UI)
     /// </summary>
+    /// <param name="status">Статус отклонения</param>
+    /// <returns>Название цвета для отображения</returns>
     public static string GetStatusColor(DeviationStatus status)
     {
         return status switch
         {
-            DeviationStatus.Excellent => "#4CAF50",    // Зеленый
-            DeviationStatus.Good => "#8BC34A",         // Светло-зеленый
-            DeviationStatus.Acceptable => "#FFC107",   // Желтый
-            DeviationStatus.Poor => "#FF9800",         // Оранжевый
-            DeviationStatus.Critical => "#F44336",     // Красный
-            _ => "#9E9E9E"                             // Серый (неопределено)
+            DeviationStatus.Excellent => "#2E7D32",      // Темно-зеленый
+            DeviationStatus.Good => "#4CAF50",           // Зеленый
+            DeviationStatus.Acceptable => "#FF9800",     // Оранжевый
+            DeviationStatus.Poor => "#F44336",           // Красный
+            DeviationStatus.Critical => "#B71C1C",       // Темно-красный
+            _ => "#9E9E9E"                               // Серый
         };
     }
 
     /// <summary>
     /// Получает описание статуса на русском языке
     /// </summary>
+    /// <param name="status">Статус отклонения</param>
+    /// <returns>Текстовое описание</returns>
     public static string GetStatusDescription(DeviationStatus status)
     {
         return status switch
@@ -66,88 +66,90 @@ public static class StatusClassifier
             DeviationStatus.Acceptable => "Приемлемо",
             DeviationStatus.Poor => "Плохо",
             DeviationStatus.Critical => "Критично",
-            _ => "Не определено"
+            _ => "Неизвестно"
         };
     }
 
     /// <summary>
-    /// Проверяет, является ли статус приемлемым для эксплуатации
+    /// Определяет, требует ли статус корректирующих действий
     /// </summary>
-    public static bool IsAcceptableForOperation(DeviationStatus status)
-    {
-        return status <= DeviationStatus.Acceptable;
-    }
-
-    /// <summary>
-    /// Проверяет, требуется ли корректирующее действие
-    /// </summary>
+    /// <param name="status">Статус отклонения</param>
+    /// <returns>True, если требуются действия</returns>
     public static bool RequiresCorrectiveAction(DeviationStatus status)
     {
-        return status >= DeviationStatus.Poor;
+        return status is DeviationStatus.Poor or DeviationStatus.Critical;
     }
 
     /// <summary>
-    /// Вычисляет статистику распределения статусов
+    /// Получает иконку для статуса
     /// </summary>
-    public static StatusDistribution CalculateStatusDistribution(IEnumerable<decimal> deviations)
+    /// <param name="status">Статус отклонения</param>
+    /// <returns>Unicode символ иконки</returns>
+    public static string GetStatusIcon(DeviationStatus status)
     {
-        var statusCounts = new Dictionary<DeviationStatus, int>();
+        return status switch
+        {
+            DeviationStatus.Excellent => "✅",
+            DeviationStatus.Good => "✅",
+            DeviationStatus.Acceptable => "⚠️",
+            DeviationStatus.Poor => "❌",
+            DeviationStatus.Critical => "🔴",
+            _ => "❔"
+        };
+    }
+
+    /// <summary>
+    /// Классифицирует множество отклонений и возвращает сводную статистику
+    /// </summary>
+    /// <param name="deviations">Коллекция процентных отклонений</param>
+    /// <returns>Сводная статистика классификации</returns>
+    public static DeviationStatistics ClassifyMultiple(IEnumerable<decimal> deviations)
+    {
+        var statusCounts = new Dictionary<DeviationStatus, int>
+        {
+            { DeviationStatus.Excellent, 0 },
+            { DeviationStatus.Good, 0 },
+            { DeviationStatus.Acceptable, 0 },
+            { DeviationStatus.Poor, 0 },
+            { DeviationStatus.Critical, 0 }
+        };
+
         var totalCount = 0;
+        var worstStatus = DeviationStatus.Excellent;
 
         foreach (var deviation in deviations)
         {
             var status = ClassifyDeviation(deviation);
-            statusCounts[status] = statusCounts.GetValueOrDefault(status) + 1;
+            statusCounts[status]++;
             totalCount++;
+
+            if (status > worstStatus)
+                worstStatus = status;
         }
 
-        return new StatusDistribution
+        var criticalPercentage = totalCount > 0 
+            ? (decimal)(statusCounts[DeviationStatus.Critical] + statusCounts[DeviationStatus.Poor]) / totalCount * 100 
+            : 0;
+
+        return new DeviationStatistics
         {
+            StatusCounts = statusCounts,
             TotalCount = totalCount,
-            ExcellentCount = statusCounts.GetValueOrDefault(DeviationStatus.Excellent),
-            GoodCount = statusCounts.GetValueOrDefault(DeviationStatus.Good),
-            AcceptableCount = statusCounts.GetValueOrDefault(DeviationStatus.Acceptable),
-            PoorCount = statusCounts.GetValueOrDefault(DeviationStatus.Poor),
-            CriticalCount = statusCounts.GetValueOrDefault(DeviationStatus.Critical)
+            WorstStatus = worstStatus,
+            CriticalPercentage = criticalPercentage,
+            RequiresAttention = criticalPercentage > 10 // Более 10% критичных отклонений
         };
     }
 }
 
 /// <summary>
-/// Статусы отклонений от нормы
+/// Статистика классификации отклонений
 /// </summary>
-public enum DeviationStatus
+public record DeviationStatistics
 {
-    Excellent = 0,   // До 5%
-    Good = 1,        // До 10%
-    Acceptable = 2,  // До 15%
-    Poor = 3,        // До 25%
-    Critical = 4     // Свыше 25%
-}
-
-/// <summary>
-/// Статистика распределения статусов - совместима с существующими типами
-/// </summary>
-public record StatusDistribution
-{
+    public Dictionary<DeviationStatus, int> StatusCounts { get; init; } = new();
     public int TotalCount { get; init; }
-    public int ExcellentCount { get; init; }
-    public int GoodCount { get; init; }
-    public int AcceptableCount { get; init; }
-    public int PoorCount { get; init; }
-    public int CriticalCount { get; init; }
-
-    /// <summary>
-    /// Процент приемлемых результатов (отлично + хорошо + приемлемо)
-    /// </summary>
-    public decimal AcceptablePercentage => TotalCount > 0
-        ? (decimal)(ExcellentCount + GoodCount + AcceptableCount) / TotalCount * 100
-        : 0;
-
-    /// <summary>
-    /// Процент проблемных результатов (плохо + критично)
-    /// </summary>
-    public decimal ProblematicPercentage => TotalCount > 0
-        ? (decimal)(PoorCount + CriticalCount) / TotalCount * 100
-        : 0;
+    public DeviationStatus WorstStatus { get; init; }
+    public decimal CriticalPercentage { get; init; }
+    public bool RequiresAttention { get; init; }
 }

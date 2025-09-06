@@ -1,4 +1,4 @@
-// App.xaml.cs - ОБНОВЛЕННЫЙ для CHAT 3-4
+// App.xaml.cs - ИСПРАВЛЕНА: убраны конвертеры (они теперь в отдельном файле)
 using System.IO;
 using System.Windows;
 using Microsoft.Extensions.Configuration;
@@ -15,7 +15,7 @@ namespace AnalysisNorm;
 
 /// <summary>
 /// CHAT 3-4: Обновленное приложение с полной поддержкой DI и конфигурации
-/// Включает: регистрацию новых сервисов, обработку ошибок, профили конфигурации
+/// ИСПРАВЛЕНО: убраны конвертеры (они перенесены в Converters/ValueConverters.cs)
 /// </summary>
 public partial class App : Application
 {
@@ -104,7 +104,7 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// НОВАЯ функция: Инициализация приложения с проверками
+    /// Инициализация приложения с проверками
     /// </summary>
     private async Task InitializeApplicationAsync()
     {
@@ -220,8 +220,8 @@ public partial class App : Application
                     diagnostics.LoadedConfigurationsCount);
             }
 
-            _logger?.LogInformation("Валидация конфигурации завершена: размер {Size}", 
-                diagnostics.FormattedSize);
+            _logger?.LogInformation("Валидация конфигурации завершена: конфигураций {Count}", 
+                diagnostics.LoadedConfigurationsCount);
         }
         catch (Exception ex)
         {
@@ -501,49 +501,7 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Обработка необработанных исключений
-    /// </summary>
-    protected override void OnStartup(StartupEventArgs e)
-    {
-        // Обработка необработанных исключений в UI потоке
-        DispatcherUnhandledException += (sender, args) =>
-        {
-            _logger?.LogError(args.Exception, "Необработанное исключение в UI потоке");
-            
-            var message = $"Произошла неожиданная ошибка:\n\n{args.Exception.Message}\n\n" +
-                         $"Приложение может работать нестабильно. Рекомендуется перезапуск.";
-            
-            MessageBox.Show(message, "Неожиданная ошибка", 
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-            
-            args.Handled = true; // Предотвращаем завершение приложения
-        };
-
-        // Обработка необработанных исключений в фоновых потоках
-        AppDomain.CurrentDomain.UnhandledException += (sender, args) =>
-        {
-            var ex = args.ExceptionObject as Exception;
-            _logger?.LogError(ex, "Необработанное исключение в фоновом потоке");
-            
-            if (args.IsTerminating)
-            {
-                _logger?.LogCritical("Приложение аварийно завершается из-за необработанного исключения");
-            }
-        };
-
-        // Обработка необработанных исключений в Task
-        TaskScheduler.UnobservedTaskException += (sender, args) =>
-        {
-            _logger?.LogError(args.Exception, "Необработанное исключение в Task");
-            args.SetObserved(); // Помечаем как обработанное
-        };
-
-        base.OnStartup(e);
-    }
-
-    /// <summary>
-    /// НОВАЯ функция: Получение сервиса из DI контейнера
-    /// Удобный метод для доступа к сервисам из любого места приложения
+    /// Получение сервиса из DI контейнера
     /// </summary>
     public static T? GetService<T>() where T : class
     {
@@ -551,153 +509,44 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// НОВАЯ функция: Получение обязательного сервиса из DI контейнера
+    /// Получение обязательного сервиса из DI контейнера
     /// </summary>
     public static T GetRequiredService<T>() where T : class
     {
         return (Current as App)?._host?.Services?.GetRequiredService<T>() 
                ?? throw new InvalidOperationException($"Сервис {typeof(T).Name} не зарегистрирован");
     }
-
-    /// <summary>
-    /// НОВАЯ функция: Перезагрузка конфигурации во время выполнения
-    /// </summary>
-    public static async Task ReloadConfigurationAsync()
-    {
-        try
-        {
-            var configService = GetService<IConfigurationService>();
-            if (configService != null)
-            {
-                // Здесь можно добавить логику перезагрузки конфигурации
-                var logger = GetService<IApplicationLogger>();
-                logger?.LogInformation("Конфигурация перезагружена");
-            }
-        }
-        catch (Exception ex)
-        {
-            var logger = GetService<IApplicationLogger>();
-            logger?.LogError(ex, "Ошибка перезагрузки конфигурации");
-        }
-    }
 }
 
 /// <summary>
-/// НОВЫЕ конвертеры для UI (CHAT 3-4)
+/// Расширения для настройки среды
 /// </summary>
-namespace AnalysisNorm
+public static class ServiceConfigurationExtensions
 {
-    using System.Globalization;
-    using System.Windows.Data;
-    using System.Windows.Media;
-    using MaterialDesignThemes.Wpf;
-    using AnalysisNorm.ViewModels;
-
-    /// <summary>
-    /// Конвертер статуса processing step в иконку
-    /// </summary>
-    public class ProcessingStepStatusToIconConverter : IValueConverter
+    public static IServiceCollection ConfigureForEnvironment(
+        this IServiceCollection services, 
+        IHostEnvironment environment, 
+        IConfiguration configuration)
     {
-        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        if (environment.IsDevelopment())
         {
-            if (value is ProcessingStepStatus status)
+            // Настройки для разработки
+            services.Configure<DiagnosticsConfiguration>(options =>
             {
-                return status switch
-                {
-                    ProcessingStepStatus.InProgress => PackIconKind.Loading,
-                    ProcessingStepStatus.Completed => PackIconKind.CheckCircle,
-                    ProcessingStepStatus.Error => PackIconKind.AlertCircle,
-                    ProcessingStepStatus.Skipped => PackIconKind.SkipNext,
-                    _ => PackIconKind.Help
-                };
-            }
-            return PackIconKind.Help;
+                options.EnableDetailedLogging = true;
+                options.EnablePerformanceAlerts = true;
+            });
         }
-
-        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        else if (environment.IsProduction())
         {
-            throw new NotImplementedException();
-        }
-    }
-
-    /// <summary>
-    /// Конвертер статуса processing step в цвет
-    /// </summary>
-    public class ProcessingStepStatusToColorConverter : IValueConverter
-    {
-        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-        {
-            if (value is ProcessingStepStatus status)
+            // Настройки для продакшена
+            services.Configure<PerformanceConfiguration>(options =>
             {
-                return status switch
-                {
-                    ProcessingStepStatus.InProgress => new SolidColorBrush(Colors.Orange),
-                    ProcessingStepStatus.Completed => new SolidColorBrush(Colors.Green),
-                    ProcessingStepStatus.Error => new SolidColorBrush(Colors.Red),
-                    ProcessingStepStatus.Skipped => new SolidColorBrush(Colors.Gray),
-                    _ => new SolidColorBrush(Colors.Black)
-                };
-            }
-            return new SolidColorBrush(Colors.Black);
+                options.EnablePerformanceLogging = true;
+                options.MaxMemoryUsageMB = 150; // Строже в продакшене
+            });
         }
 
-        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-        {
-            throw new NotImplementedException();
-        }
-    }
-
-    /// <summary>
-    /// Конвертер уровня диагностического алерта в иконку
-    /// </summary>
-    public class DiagnosticAlertLevelToIconConverter : IValueConverter
-    {
-        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-        {
-            if (value is DiagnosticAlertLevel level)
-            {
-                return level switch
-                {
-                    DiagnosticAlertLevel.Info => PackIconKind.Information,
-                    DiagnosticAlertLevel.Warning => PackIconKind.Warning,
-                    DiagnosticAlertLevel.Error => PackIconKind.Error,
-                    DiagnosticAlertLevel.Critical => PackIconKind.AlertOctagon,
-                    _ => PackIconKind.Help
-                };
-            }
-            return PackIconKind.Help;
-        }
-
-        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-        {
-            throw new NotImplementedException();
-        }
-    }
-
-    /// <summary>
-    /// Конвертер уровня диагностического алерта в цвет
-    /// </summary>
-    public class DiagnosticAlertLevelToColorConverter : IValueConverter
-    {
-        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-        {
-            if (value is DiagnosticAlertLevel level)
-            {
-                return level switch
-                {
-                    DiagnosticAlertLevel.Info => new SolidColorBrush(Colors.Blue),
-                    DiagnosticAlertLevel.Warning => new SolidColorBrush(Colors.Orange),
-                    DiagnosticAlertLevel.Error => new SolidColorBrush(Colors.Red),
-                    DiagnosticAlertLevel.Critical => new SolidColorBrush(Colors.DarkRed),
-                    _ => new SolidColorBrush(Colors.Black)
-                };
-            }
-            return new SolidColorBrush(Colors.Black);
-        }
-
-        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-        {
-            throw new NotImplementedException();
-        }
+        return services;
     }
 }
