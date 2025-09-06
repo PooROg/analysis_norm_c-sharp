@@ -190,20 +190,20 @@ public class SimplePerformanceMonitor : IPerformanceMonitor, IDisposable
 
             return new PerformanceMetrics
             {
-                MemoryUsageMB = Math.Round(currentMemoryMB, 1),
-                PeakMemoryUsageMB = Math.Round(peakMemoryMB, 1),
+                MemoryUsageMB = currentMemoryMB,
+                PeakMemoryUsageMB = peakMemoryMB,
                 ActiveOperations = _activeOperations.Count,
                 TotalOperations = _totalOperations,
-                AverageOperationTime = Math.Round(averageOperationTime, 1),
-                LastOperationTime = Math.Round((decimal)lastOperationTime, 1),
-                TotalCodeLines = EstimateCodeLines(),
-                TotalNorms = 0 // Будет обновляться из других сервисов
+                AverageOperationTime = averageOperationTime,
+                LastOperationTime = lastOperationTime,
+                TotalCodeLines = 8500, // Примерная оценка
+                UpTime = DateTime.Now - _currentProcess.StartTime
             };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Ошибка при получении метрик производительности");
-            return new PerformanceMetrics();
+            _logger.LogError(ex, "Ошибка получения метрик производительности");
+            return new PerformanceMetrics(); // Возвращаем пустую структуру при ошибке
         }
     }
 

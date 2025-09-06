@@ -60,3 +60,20 @@ public record BasicProcessingStats
     public TimeSpan ProcessingTime { get; init; }
     public DateTime LastProcessingDate { get; init; }
 }
+
+/// <summary>
+/// ОБНОВЛЕННЫЙ интерфейс IInteractiveNormsAnalyzer для CHAT 2
+/// </summary>
+public interface IInteractiveNormsAnalyzer
+{
+    // Existing methods
+    Task<BasicAnalysisResult> AnalyzeSectionAsync(string sectionName, string? specificNormId = null);
+    Task<IEnumerable<string>> GetAvailableSectionsAsync();
+    BasicProcessingStats GetProcessingStats();
+    IReadOnlyList<Route> LoadedRoutes { get; }
+
+    // НОВЫЕ методы для CHAT 2
+    Task<bool> LoadRoutesFromHtmlAsync(List<string> htmlFiles);
+    Task<bool> LoadNormsFromHtmlAsync(List<string> htmlFiles);
+    IReadOnlyDictionary<string, BasicAnalysisResult> AnalyzedResults { get; }
+}

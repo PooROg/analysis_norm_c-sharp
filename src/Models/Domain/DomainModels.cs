@@ -1,4 +1,7 @@
+using System.Windows.Controls;
+
 namespace AnalysisNorm.Models.Domain;
+
 
 /// <summary>
 /// Основная сущность нормы расхода электроэнергии
@@ -27,7 +30,7 @@ public record Norm(
     /// <summary>
     /// Диапазон значений X (нагрузка)
     /// </summary>
-    public (decimal Min, decimal Max) LoadRange => Points.Count > 0 
+    public (decimal Min, decimal Max) LoadRange => Points.Count > 0
         ? (Points.Min(p => p.X), Points.Max(p => p.X))
         : (0, 0);
 
@@ -126,12 +129,77 @@ public record Section(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(Name);
         
-        if (TkmBrutto < 0) throw new ArgumentException("TkmBrutto cannot be negative", nameof(TkmBrutto));
-        if (Distance < 0) throw new ArgumentException("Distance cannot be negative", nameof(Distance));
-        if (ActualConsumption < 0) throw new ArgumentException("ActualConsumption cannot be negative", nameof(ActualConsumption));
-        if (NormConsumption < 0) throw new ArgumentException("NormConsumption cannot be negative", nameof(NormConsumption));
-    }
+        if (TkmBrutto< 0) throw new ArgumentException("TkmBrutto cannot be negative", nameof(TkmBrutto));
+        if (Distance< 0) throw new ArgumentException("Distance cannot be negative", nameof(Distance));
+        if (ActualConsumption< 0) throw new ArgumentException("ActualConsumption cannot be negative", nameof(ActualConsumption));
+        if (NormConsumption< 0) throw new ArgumentException("NormConsumption cannot be negative", nameof(NormConsumption));
+}
 
-    /// <summary>
-    /// Отклонение от нормы в процентах
-    /// 
+}
+
+/// <summary>
+/// ОБНОВЛЕННЫЙ ProcessingResult для CHAT 2 - заменяет существующий простой ProcessingResult
+/// Поддерживает как простые сообщения об ошибках, так и детализированные ошибки
+/// </summary>
+public record ProcessingResult<T>
+{
+    public T? Data { get; init; }
+    public bool IsSuccess { get; init; }
+    public string? ErrorMessage { get; init; }
+    public IReadOnlyList<ProcessingError>? Errors { get; init; }
+    public DateTime ProcessedAt { get; init; } = DateTime.UtcNow;
+
+    // Простые методы (совместимые с EnhancedHtmlParser)
+    public static ProcessingResult<T> Success(T data) => new()
+    {
+        Data = data,
+        IsSuccess = true
+    };
+
+    public static ProcessingResult<T> Failure(string errorMessage) => new()
+    {
+        IsSuccess = false,
+        ErrorMessage = errorMessage
+    };
+
+    // Расширенные методы (для будущих чатов)
+    public static ProcessingResult<T> Failure(params ProcessingError[] errors) => new()
+    {
+        IsSuccess = false,
+        Errors = errors?.ToArray() ?? Array.Empty<ProcessingError>(),
+        ErrorMessage = errors?.FirstOrDefault()?.Message
+    };
+}
+
+/// <summary>
+/// ДОБАВИТЬ: Недостающие типы для совместимости
+/// </summary>
+public record ProcessingError(
+    ErrorSeverity Severity,
+    string Message,
+    string? Context = null,
+    Exception? Exception = null)
+{
+    public DateTime Timestamp { get; init; } = DateTime.UtcNow;
+    public string ShortDescription => Context != null ? $"{Context}: {Message}" : Message;
+}
+
+public enum ErrorSeverity
+{
+    Info,
+    Warning,
+    Error,
+    Critical
+}
+
+/// <summary>
+/// Результат обработки для совместимости с EnhancedHtmlParser
+/// </summary>
+public record ProcessingStatistics
+{
+    public int TotalItems { get; init; }
+    public int ProcessedItems { get; init; }
+    public int SkippedItems { get; init; }
+    public TimeSpan ProcessingTime { get; init; }
+    public long MemoryUsageBytes { get; init; }
+}

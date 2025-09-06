@@ -17,19 +17,26 @@ public static class ServiceCollectionExtensions
     /// <summary>
     /// Регистрирует новые сервисы анализа норм - дополняет существующую регистрацию
     /// </summary>
-    public static IServiceCollection AddEnhancedAnalysisServices(this IServiceCollection services)
+    public static IServiceCollection AddAnalysisNormServices(this IServiceCollection services)
     {
-        // Главный анализатор - НОВЫЙ сервис
-        services.AddSingleton<IInteractiveNormsAnalyzer, InteractiveNormsAnalyzer>();
+        // Core Services (уже существующие)
+        services.AddSingleton<IApplicationLogger, SerilogLogger>();
+        services.AddSingleton<IPerformanceMonitor, SimplePerformanceMonitor>();
+        services.AddSingleton<IMemoryCache, MemoryCache>();
+        services.AddSingleton<ICacheService, MemoryCacheService>();
+        services.AddSingleton<INormStorage, MemoryNormStorage>();
 
-        // Усиленный HTML парсер - заменяет заглушку если нужно
-        services.AddTransient<EnhancedHtmlParser>();
+        // НОВОЕ для CHAT 2 - обновленные парсеры
+        services.AddScoped<IHtmlParser, EnhancedHtmlParser>();
+        services.AddScoped<IInteractiveNormsAnalyzer, InteractiveNormsAnalyzer>();
 
-        // НЕ регистрируем существующие сервисы чтобы избежать конфликтов:
-        // - INormStorage уже зарегистрирован
-        // - IPerformanceMonitor уже зарегистрирован  
-        // - IApplicationLogger уже зарегистрирован
-        // - ViewModels уже зарегистрированы
+        // Mathematical Services
+        services.AddTransient<InterpolationEngine>();
+        services.AddTransient<StatusClassifier>();
+
+        // UI Services  
+        services.AddTransient<MainViewModel>();
+        services.AddTransient<Views.MainWindow>();
 
         return services;
     }
