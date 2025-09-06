@@ -1,16 +1,18 @@
-// Services/Interfaces/IInteractiveNormsAnalyzer.cs
+// Services/Interfaces/IInteractiveNormsAnalyzer.cs (ИСПРАВЛЕН)
 using AnalysisNorm.Models.Domain;
+using AnalysisNorm.Services.Implementation;
 
 namespace AnalysisNorm.Services.Interfaces;
 
 /// <summary>
-/// Главный анализатор норм - совместимый с существующей архитектурой проекта
-/// Упрощенный интерфейс без избыточных абстракций, использует существующие типы
+/// ИСПРАВЛЕННЫЙ интерфейс главного анализатора норм
+/// Объединяет функциональность CHAT 2 + CHAT 3-4
+/// Совместим с существующей архитектурой проекта
 /// </summary>
 public interface IInteractiveNormsAnalyzer
 {
     /// <summary>
-    /// Анализирует участок с возможностью фильтрации - использует существующие типы данных
+    /// Анализирует участок с возможностью фильтрации
     /// </summary>
     Task<BasicAnalysisResult> AnalyzeSectionAsync(string sectionName, string? specificNormId = null);
 
@@ -20,18 +22,51 @@ public interface IInteractiveNormsAnalyzer
     Task<IEnumerable<string>> GetAvailableSectionsAsync();
 
     /// <summary>
-    /// Получить статистику обработки - совместимо с существующими типами
+    /// Получить статистику обработки
     /// </summary>
     BasicProcessingStats GetProcessingStats();
 
     /// <summary>
-    /// Текущие загруженные маршруты - использует существующий тип Route
+    /// Текущие загруженные маршруты
     /// </summary>
     IReadOnlyList<Route> LoadedRoutes { get; }
+
+    /// <summary>
+    /// CHAT 2-4: Загрузка маршрутов из HTML файлов
+    /// Точная копия Python load_routes_from_html
+    /// </summary>
+    Task<bool> LoadRoutesFromHtmlAsync(List<string> htmlFiles);
+
+    /// <summary>
+    /// CHAT 2-4: Загрузка норм из HTML файлов  
+    /// Точная копия Python load_norms_from_html
+    /// </summary>
+    Task<bool> LoadNormsFromHtmlAsync(List<string> htmlFiles);
+
+    /// <summary>
+    /// CHAT 2-4: Результаты анализа участков
+    /// </summary>
+    IReadOnlyDictionary<string, BasicAnalysisResult> AnalyzedResults { get; }
+
+    /// <summary>
+    /// НОВОЕ CHAT 3-4: Карта участков и норм
+    /// Точная копия Python sections_norms_map
+    /// </summary>
+    IReadOnlyDictionary<string, List<string>> GetSectionsNormsMap();
+
+    /// <summary>
+    /// НОВОЕ CHAT 3-4: Статистика по участкам
+    /// </summary>
+    Task<Dictionary<string, int>> GetSectionStatisticsAsync();
+
+    /// <summary>
+    /// НОВОЕ CHAT 3-4: Проверка целостности данных
+    /// </summary>
+    Task<DataIntegrityReport> ValidateDataIntegrityAsync();
 }
 
 /// <summary>
-/// Упрощенный результат анализа - совместим с существующими типами проекта
+/// Результат анализа участка - совместим с существующими типами проекта
 /// </summary>
 public record BasicAnalysisResult
 {
@@ -47,10 +82,22 @@ public record BasicAnalysisResult
         SectionName = sectionName,
         AnalysisDate = DateTime.UtcNow
     };
+
+    /// <summary>
+    /// Качественная оценка результата
+    /// </summary>
+    public string QualityAssessment => MeanDeviation switch
+    {
+        < 5 => "Отличное",
+        < 10 => "Хорошее", 
+        < 20 => "Приемлемое",
+        < 30 => "Плохое",
+        _ => "Критическое"
+    };
 }
 
 /// <summary>
-/// Упрощенная статистика обработки - совместима с существующими типами
+/// Статистика обработки - совместима с существующими типами
 /// </summary>
 public record BasicProcessingStats
 {
@@ -59,21 +106,18 @@ public record BasicProcessingStats
     public int TotalErrors { get; init; }
     public TimeSpan ProcessingTime { get; init; }
     public DateTime LastProcessingDate { get; init; }
-}
 
-/// <summary>
-/// ОБНОВЛЕННЫЙ интерфейс IInteractiveNormsAnalyzer для CHAT 2
-/// </summary>
-public interface IInteractiveNormsAnalyzer
-{
-    // Existing methods
-    Task<BasicAnalysisResult> AnalyzeSectionAsync(string sectionName, string? specificNormId = null);
-    Task<IEnumerable<string>> GetAvailableSectionsAsync();
-    BasicProcessingStats GetProcessingStats();
-    IReadOnlyList<Route> LoadedRoutes { get; }
+    /// <summary>
+    /// Скорость обработки (маршрутов в секунду)
+    /// </summary>
+    public decimal ProcessingRate => ProcessingTime.TotalSeconds > 0 
+        ? (decimal)(TotalRoutesLoaded / ProcessingTime.TotalSeconds) 
+        : 0;
 
-    // НОВЫЕ методы для CHAT 2
-    Task<bool> LoadRoutesFromHtmlAsync(List<string> htmlFiles);
-    Task<bool> LoadNormsFromHtmlAsync(List<string> htmlFiles);
-    IReadOnlyDictionary<string, BasicAnalysisResult> AnalyzedResults { get; }
+    /// <summary>
+    /// Процент успешности обработки
+    /// </summary>
+    public decimal SuccessRate => TotalRoutesLoaded + TotalErrors > 0 
+        ? (decimal)TotalRoutesLoaded / (TotalRoutesLoaded + TotalErrors) * 100 
+        : 0;
 }

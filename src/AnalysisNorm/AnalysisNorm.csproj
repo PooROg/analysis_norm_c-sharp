@@ -1,3 +1,4 @@
+<!--AnalysisNorm.csproj - ОБНОВЛЕННЫЙ для CHAT 3-4-->
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
@@ -7,9 +8,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-    <AssemblyTitle>Analysis Norm - Анализатор норм расхода электроэнергии РЖД</AssemblyTitle>
-    <AssemblyVersion>2.0.0.0</AssemblyVersion>
-    <FileVersion>2.0.0.0</FileVersion>
+    <AssemblyTitle>Analysis Norm - Анализатор норм расхода электроэнергии РЖД (CHAT 3-4)</AssemblyTitle>
+    <AssemblyVersion>3.4.0.0</AssemblyVersion>
+    <FileVersion>3.4.0.0</FileVersion>
+    <AssemblyDescription>Продвинутый анализатор норм с HTML парсингом, дедупликацией и Excel экспортом</AssemblyDescription>
+    <Copyright>© 2024 Analysis Norm Project</Copyright>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
@@ -18,39 +21,166 @@
     <PublishTrimmed>false</PublishTrimmed>
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <DebugType>full</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+    <Optimize>false</Optimize>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- ИСПРАВЛЕННЫЕ Core Dependencies - обновлены версии -->
+    <!-- ОБНОВЛЕННЫЕ Core Dependencies для .NET 9 -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.0" />
     
-    <!-- Logging -->
+    <!-- Logging - обновленные версии -->
     <PackageReference Include="Serilog" Version="4.1.0" />
     <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
     <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+    <PackageReference Include="Serilog.Settings.Configuration" Version="8.0.4" />
     
     <!-- MVVM and UI -->
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
     <PackageReference Include="MaterialDesignThemes" Version="5.1.0" />
     <PackageReference Include="MaterialDesignColors" Version="3.1.0" />
     
-    <!-- Processing - ИСПРАВЛЕНЫ пакеты -->
+    <!-- НОВЫЕ для CHAT 3: HTML Processing -->
     <PackageReference Include="HtmlAgilityPack" Version="1.11.71" />
-    <!-- УДАЛЯЕМ проблемные пакеты для CHAT 2 -->
-    <!-- <PackageReference Include="EPPlus" Version="7.4.2" /> -->
+    <PackageReference Include="AngleSharp" Version="1.1.2" />
+    
+    <!-- НОВЫЕ для CHAT 4: Excel Export -->
+    <PackageReference Include="EPPlus" Version="7.4.2" />
+    <PackageReference Include="ClosedXML" Version="0.104.1" />
+    
+    <!-- НОВЫЕ для CHAT 3-4: Mathematics and Data Processing -->
+    <PackageReference Include="Math.NET.Numerics" Version="5.0.0" />
+    <PackageReference Include="System.Text.Json" Version="9.0.0" />
+    
+    <!-- НОВЫЕ для CHAT 4: Configuration and Validation -->
+    <PackageReference Include="FluentValidation" Version="11.10.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="9.0.0" />
+    
+    <!-- Performance and Diagnostics -->
+    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="9.0.0" />
+    <PackageReference Include="System.Management" Version="9.0.0" />
+    
+    <!-- БУДУЩИЕ для CHAT 6-7: Visualization (пока закомментированы) -->
     <!-- <PackageReference Include="OxyPlot.Wpf" Version="2.2.0" /> -->
-    <!-- <PackageReference Include="Math.NET.Numerics" Version="5.0.0" /> -->
+    <!-- <PackageReference Include="LiveCharts.Wpf" Version="0.9.7" /> -->
+    
+    <!-- Testing (для разработки) -->
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" Condition="'$(Configuration)'=='Debug'" />
+    <PackageReference Include="xunit" Version="2.9.2" Condition="'$(Configuration)'=='Debug'" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" Condition="'$(Configuration)'=='Debug'" />
+    <PackageReference Include="Moq" Version="4.20.72" Condition="'$(Configuration)'=='Debug'" />
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Configuration Files -->
     <None Update="appsettings.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="appsettings.Development.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <DependentUpon>appsettings.json</DependentUpon>
+    </None>
+    <None Update="appsettings.Production.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <DependentUpon>appsettings.json</DependentUpon>
+    </None>
+    
+    <!-- НОВЫЕ конфигурационные файлы для CHAT 4 -->
+    <None Update="Config\excel_export.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Config\html_parsing.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Config\performance.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Config\diagnostics.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    
+    <!-- Resource Files -->
+    <Resource Include="Resources\**\*" />
+    
+    <!-- Sample Data для тестирования -->
+    <None Update="SampleData\sample_route.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="SampleData\sample_norms.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- НОВЫЕ папки для CHAT 3-4 -->
+    <Folder Include="Config\" />
+    <Folder Include="SampleData\" />
+    <Folder Include="Exports\" />
+    <Folder Include="Logs\" />
+    <Folder Include="Tests\" />
+    <Folder Include="Documentation\" />
+    
+    <!-- Existing folders -->
+    <Folder Include="Services\Implementation\" />
+    <Folder Include="Services\Interfaces\" />
+    <Folder Include="Models\Domain\" />
+    <Folder Include="Infrastructure\Logging\" />
+    <Folder Include="Infrastructure\Mathematics\" />
+    <Folder Include="ViewModels\" />
+    <Folder Include="Views\" />
+    <Folder Include="Configuration\" />
+  </ItemGroup>
+
+  <!-- Build Events -->
+  <Target Name="PreBuild" BeforeTargets="PreBuildEvent">
+    <Message Text="Starting Analysis Norm build (CHAT 3-4)..." Importance="high" />
+    <!-- Создаем необходимые папки -->
+    <MakeDir Directories="$(OutputPath)Config" Condition="!Exists('$(OutputPath)Config')" />
+    <MakeDir Directories="$(OutputPath)Logs" Condition="!Exists('$(OutputPath)Logs')" />
+    <MakeDir Directories="$(OutputPath)Exports" Condition="!Exists('$(OutputPath)Exports')" />
+  </Target>
+
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <Message Text="Analysis Norm build completed successfully!" Importance="high" />
+    <!-- Копируем дополнительные файлы -->
+    <Copy SourceFiles="README.md" DestinationFolder="$(OutputPath)" Condition="Exists('README.md')" />
+  </Target>
+
+  <!-- Code Analysis -->
+  <PropertyGroup>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningsNotAsErrors>NU1701</WarningsNotAsErrors>
+  </PropertyGroup>
+
+  <!-- Performance Optimization -->
+  <PropertyGroup>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <RetainVMGarbageCollection>true</RetainVMGarbageCollection>
+    <TieredCompilation>true</TieredCompilation>
+    <ReadyToRun>true</ReadyToRun>
+  </PropertyGroup>
+
+  <!-- Assembly Information -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>AnalysisNorm.Tests</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
 </Project>

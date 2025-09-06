@@ -1,171 +1,535 @@
-<!-- ЗАМЕНИТЬ ПОЛНОСТЬЮ MainWindow.xaml НА ЭТУ ВЕРСИЮ: -->
-
+<!--MainWindow.xaml - ПОЛНАЯ ЗАМЕНА для CHAT 3-4-->
 <Window x:Class="AnalysisNorm.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Анализатор норм расхода электроэнергии РЖД v2.0 (CHAT 2)"
-        Width="1000" Height="700"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        xmlns:viewModels="clr-namespace:AnalysisNorm.ViewModels"
+        Title="Анализатор норм расхода электроэнергии РЖД v3.4 (CHAT 3-4)"
+        MinWidth="1400" MinHeight="900"
+        Width="1600" Height="1000"
         WindowStartupLocation="CenterScreen"
-        Background="#F5F5F5">
+        TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+        TextElement.FontWeight="Regular"
+        TextElement.FontSize="14"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="Auto"
+        Background="{DynamicResource MaterialDesignPaper}"
+        FontFamily="{DynamicResource MaterialDesignFont}">
 
-    <Grid Margin="20">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+    <Window.Resources>
+        <!-- Стили для CHAT 3-4 компонентов -->
+        <Style x:Key="SectionHeaderStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryHueMidBrush}"/>
+        </Style>
+        
+        <Style x:Key="StatusBarTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Margin" Value="8,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
 
-        <!-- Заголовок -->
-        <Border Grid.Row="0" 
-                Background="#2196F3" 
-                CornerRadius="5"
-                Padding="20,15"
-                Margin="0,0,0,20">
-            <TextBlock Text="Анализатор норм расхода электроэнергии РЖД" 
-                       FontSize="20" FontWeight="Bold"
-                       Foreground="White"
-                       HorizontalAlignment="Center"/>
-        </Border>
-
-        <!-- Основной контент -->
-        <Border Grid.Row="1" 
-                Background="White"
-                CornerRadius="5"
-                BorderBrush="#E0E0E0"
-                BorderThickness="1"
-                Padding="20">
-            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <StackPanel>
-                    <TextBlock Text="🎉 CHAT 2 - Базовая версия запущена успешно!" 
-                               FontSize="18" FontWeight="SemiBold"
-                               Foreground="#4CAF50"
-                               HorizontalAlignment="Center"
-                               Margin="0,0,0,30"/>
-
-                    <TextBlock Text="✅ Состояние системы:" 
-                               FontSize="16" FontWeight="Medium"
-                               Margin="0,0,0,15"/>
-
-                    <Grid Margin="20,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="300"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="35"/>
-                            <RowDefinition Height="35"/>
-                            <RowDefinition Height="35"/>
-                            <RowDefinition Height="35"/>
-                            <RowDefinition Height="35"/>
-                        </Grid.RowDefinitions>
-
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="✓ .NET 9:" FontWeight="Medium" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Row="0" Grid.Column="1" Text="Запущен" Foreground="#4CAF50" VerticalAlignment="Center"/>
-
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="✓ WPF:" FontWeight="Medium" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Row="1" Grid.Column="1" Text="Работает" Foreground="#4CAF50" VerticalAlignment="Center"/>
-
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="✓ XAML:" FontWeight="Medium" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Row="2" Grid.Column="1" Text="Загружен корректно" Foreground="#4CAF50" VerticalAlignment="Center"/>
-
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="✓ Serilog:" FontWeight="Medium" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Row="3" Grid.Column="1" Text="Логирование активно" Foreground="#4CAF50" VerticalAlignment="Center"/>
-
-                        <TextBlock Grid.Row="4" Grid.Column="0" Text="✓ Компиляция:" FontWeight="Medium" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Row="4" Grid.Column="1" Text="Без ошибок" Foreground="#4CAF50" VerticalAlignment="Center"/>
-                    </Grid>
-
-                    <Rectangle Height="2" Fill="#E0E0E0" Margin="0,30,0,20"/>
-
-                    <TextBlock Text="📋 Этапы реализации CHAT 2:" 
-                               FontSize="16" FontWeight="Medium"
-                               Margin="0,0,0,15"/>
-
-                    <StackPanel Margin="20,0">
-                        <Border Background="#E8F5E8" BorderBrush="#4CAF50" BorderThickness="1" CornerRadius="3" Padding="10" Margin="0,5">
-                            <TextBlock Text="1. ✅ Создать базовую структуру проекта - ВЫПОЛНЕНО"/>
+        <Style x:Key="ProcessingStepStyle" TargetType="ListBoxItem">
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border Background="{TemplateBinding Background}" 
+                                BorderBrush="{DynamicResource MaterialDesignDivider}" 
+                                BorderThickness="0,0,0,1"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter />
                         </Border>
-                        <Border Background="#FFF8E1" BorderBrush="#FF9800" BorderThickness="1" CornerRadius="3" Padding="10" Margin="0,5">
-                            <TextBlock Text="2. ⏳ Добавить модели данных (Route, Section, Norm)"/>
-                        </Border>
-                        <Border Background="#FFF8E1" BorderBrush="#FF9800" BorderThickness="1" CornerRadius="3" Padding="10" Margin="0,5">
-                            <TextBlock Text="3. ⏳ Создать интерфейсы сервисов"/>
-                        </Border>
-                        <Border Background="#FFF8E1" BorderBrush="#FF9800" BorderThickness="1" CornerRadius="3" Padding="10" Margin="0,5">
-                            <TextBlock Text="4. ⏳ Реализовать HTML парсинг"/>
-                        </Border>
-                        <Border Background="#FFF8E1" BorderBrush="#FF9800" BorderThickness="1" CornerRadius="3" Padding="10" Margin="0,5">
-                            <TextBlock Text="5. ⏳ Добавить анализ норм"/>
-                        </Border>
-                        <Border Background="#FFF8E1" BorderBrush="#FF9800" BorderThickness="1" CornerRadius="3" Padding="10" Margin="0,5">
-                            <TextBlock Text="6. ⏳ Интегрировать UI с сервисами"/>
-                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Конвертеры -->
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+    </Window.Resources>
+
+    <materialDesign:DialogHost Identifier="MainDialogHost">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/> <!-- Toolbar -->
+                <RowDefinition Height="*"/>    <!-- Main Content -->
+                <RowDefinition Height="Auto"/> <!-- Status Bar -->
+            </Grid.RowDefinitions>
+
+            <!-- Toolbar - Enhanced for CHAT 3-4 -->
+            <materialDesign:Card Grid.Row="0" Margin="8,8,8,4" 
+                               materialDesign:ShadowAssist.ShadowDepth="Depth2">
+                <Grid Margin="16,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Left - Title and Logo -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="Analytics" Width="28" Height="28" 
+                                               VerticalAlignment="Center" Margin="0,0,12,0"
+                                               Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Анализатор норм расхода электроэнергии РЖД" 
+                                     Style="{StaticResource SectionHeaderStyle}" Margin="0"/>
+                            <TextBlock Text="Enhanced Version 3.4 - Advanced Parsing &amp; Excel Export" 
+                                     FontSize="10" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                        </StackPanel>
                     </StackPanel>
 
-                    <Rectangle Height="2" Fill="#E0E0E0" Margin="0,30,0,20"/>
+                    <!-- Right - Action Buttons -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <Button Style="{StaticResource MaterialDesignRaisedButton}"
+                                Command="{Binding LoadRoutesCommand}"
+                                IsEnabled="{Binding CanLoadRoutes}"
+                                Margin="4,0"
+                                ToolTip="Загрузить HTML файлы с маршрутами">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="FileUpload" Width="16" Height="16" Margin="0,0,4,0"/>
+                                <TextBlock Text="Загрузить маршруты"/>
+                            </StackPanel>
+                        </Button>
+                        
+                        <Button Style="{StaticResource MaterialDesignRaisedButton}"
+                                Command="{Binding LoadNormsCommand}"
+                                IsEnabled="{Binding CanLoadNorms}"
+                                Margin="4,0"
+                                ToolTip="Загрузить HTML файлы с нормами">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="FileCode" Width="16" Height="16" Margin="0,0,4,0"/>
+                                <TextBlock Text="Загрузить нормы"/>
+                            </StackPanel>
+                        </Button>
 
-                    <TextBlock Text="🔧 Информация о проекте:" 
-                               FontSize="16" FontWeight="Medium"
-                               Margin="0,0,0,15"/>
+                        <Button Style="{StaticResource MaterialDesignRaisedButton}"
+                                Command="{Binding ExportToExcelCommand}"
+                                IsEnabled="{Binding CanExportExcel}"
+                                Background="#4CAF50"
+                                BorderBrush="#4CAF50"
+                                Margin="8,0,4,0"
+                                ToolTip="Экспорт результатов в Excel">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="FileExcel" Width="16" Height="16" Margin="0,0,4,0"/>
+                                <TextBlock Text="Экспорт Excel"/>
+                            </StackPanel>
+                        </Button>
 
-                    <Grid Margin="20,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="200"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="30"/>
-                            <RowDefinition Height="30"/>
-                            <RowDefinition Height="30"/>
-                            <RowDefinition Height="30"/>
-                        </Grid.RowDefinitions>
+                        <Border Width="1" Background="{DynamicResource MaterialDesignDivider}" Margin="8,4"/>
 
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Версия:" FontWeight="Medium" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Row="0" Grid.Column="1" Text="2.0.0 CHAT 2" VerticalAlignment="Center"/>
+                        <Button Style="{StaticResource MaterialDesignFlatButton}"
+                                Command="{Binding RunDiagnosticsCommand}"
+                                Margin="4,0"
+                                ToolTip="Запустить диагностику системы">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="Monitor" Width="16" Height="16" Margin="0,0,4,0"/>
+                                <TextBlock Text="Диагностика"/>
+                            </StackPanel>
+                        </Button>
+                        
+                        <Button Style="{StaticResource MaterialDesignFlatButton}"
+                                Command="{Binding ConfigureSettingsCommand}"
+                                Margin="4,0"
+                                ToolTip="Настройки приложения">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="Settings" Width="16" Height="16" Margin="0,0,4,0"/>
+                                <TextBlock Text="Настройки"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </materialDesign:Card>
 
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Платформа:" FontWeight="Medium" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Row="1" Grid.Column="1" Text=".NET 9 + WPF" VerticalAlignment="Center"/>
-
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Архитектура:" FontWeight="Medium" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Row="2" Grid.Column="1" Text="Clean Architecture + MVVM" VerticalAlignment="Center"/>
-
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Логи:" FontWeight="Medium" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Row="3" Grid.Column="1" Text="logs/analysis_norm_*.log" VerticalAlignment="Center" Foreground="#666"/>
-                    </Grid>
-
-                </StackPanel>
-            </ScrollViewer>
-        </Border>
-
-        <!-- Статус бар -->
-        <Border Grid.Row="2" 
-                Background="#EEEEEE"
-                CornerRadius="3"
-                Padding="15,8"
-                Margin="0,20,0,0">
-            <Grid>
+            <!-- Main Content Area - Enhanced for CHAT 3-4 -->
+            <Grid Grid.Row="1" Margin="8,4,8,4">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="400"/>  <!-- Left Panel - wider for more info -->
+                    <ColumnDefinition Width="8"/>    <!-- Splitter -->
+                    <ColumnDefinition Width="*"/>    <!-- Center Panel -->
+                    <ColumnDefinition Width="8"/>    <!-- Splitter -->
+                    <ColumnDefinition Width="300"/>  <!-- Right Panel - diagnostics -->
                 </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <TextBlock Text="Статус: " FontWeight="Medium"/>
-                    <TextBlock Text="Система готова к разработке" Foreground="#4CAF50"/>
-                </StackPanel>
+                <!-- Left Panel - Stats and Processing Steps -->
+                <materialDesign:Card Grid.Column="0" materialDesign:ShadowAssist.ShadowDepth="Depth2">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="16">
+                            
+                            <!-- Stats Section -->
+                            <TextBlock Text="📊 Статистика обработки" Style="{StaticResource SectionHeaderStyle}"/>
+                            
+                            <Grid Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
 
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="20,0">
-                    <TextBlock Text="Память: "/>
-                    <TextBlock x:Name="MemoryText" Text="--MB" FontWeight="Medium"/>
-                </StackPanel>
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Маршрутов:" FontWeight="Medium"/>
+                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding LoadedRoutesCount}" HorizontalAlignment="Right"/>
+                                
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Норм:" FontWeight="Medium"/>
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding LoadedNormsCount}" HorizontalAlignment="Right"/>
+                                
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Участков:" FontWeight="Medium"/>
+                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding AvailableSections}" HorizontalAlignment="Right"/>
+                                
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Файлов:" FontWeight="Medium"/>
+                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding ProcessedFiles}" HorizontalAlignment="Right"/>
+                                
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="Дубликатов:" FontWeight="Medium"/>
+                                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding DuplicatesFound}" HorizontalAlignment="Right"/>
+                            </Grid>
 
-                <StackPanel Grid.Column="2" Orientation="Horizontal">
-                    <TextBlock Text="Время: "/>
-                    <TextBlock x:Name="TimeText" Text="--:--" FontWeight="Medium"/>
-                </StackPanel>
+                            <Separator Margin="0,8,0,16"/>
+
+                            <!-- Processing Steps Section -->
+                            <TextBlock Text="⚙️ Этапы обработки" Style="{StaticResource SectionHeaderStyle}"/>
+                            
+                            <ListBox ItemsSource="{Binding ProcessingSteps}"
+                                   ItemContainerStyle="{StaticResource ProcessingStepStyle}"
+                                   Background="Transparent"
+                                   BorderThickness="0"
+                                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                   MaxHeight="300">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Status Icon -->
+                                            <Border Grid.Column="0" Width="20" Height="20" 
+                                                  CornerRadius="10" Margin="0,0,8,0"
+                                                  Background="{Binding Status, Converter={StaticResource ProcessingStepStatusToColorConverter}}">
+                                                <TextBlock Text="{Binding StepNumber}" 
+                                                         HorizontalAlignment="Center" 
+                                                         VerticalAlignment="Center"
+                                                         FontSize="10" FontWeight="Bold" 
+                                                         Foreground="White"/>
+                                            </Border>
+
+                                            <!-- Description -->
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="{Binding Description}" 
+                                                         TextWrapping="Wrap" FontSize="12"/>
+                                                <TextBlock Text="{Binding FormattedDuration}" 
+                                                         FontSize="10" 
+                                                         Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                         Visibility="{Binding EndTime, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <Separator Margin="0,16,0,8"/>
+
+                            <!-- Auto Testing Section -->
+                            <TextBlock Text="🔄 Автоматическое тестирование" Style="{StaticResource SectionHeaderStyle}"/>
+                            
+                            <StackPanel Margin="0,8">
+                                <ToggleButton IsChecked="{Binding AutoTestingEnabled}"
+                                            Command="{Binding StartAutoTestCommand}"
+                                            Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                            HorizontalAlignment="Left">
+                                    <TextBlock Text="Включить автотестирование" Margin="8,0,0,0"/>
+                                </ToggleButton>
+                                
+                                <TextBlock Text="{Binding LastTestResult}" 
+                                         FontSize="11" 
+                                         Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                         TextWrapping="Wrap"
+                                         Margin="0,8,0,0"/>
+                            </StackPanel>
+
+                        </StackPanel>
+                    </ScrollViewer>
+                </materialDesign:Card>
+
+                <!-- Center Panel - Main Work Area -->
+                <materialDesign:Card Grid.Column="2" materialDesign:ShadowAssist.ShadowDepth="Depth2">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Progress Indicator -->
+                        <ProgressBar Grid.Row="0" 
+                                   Value="{Binding OperationProgress}" 
+                                   Height="4"
+                                   Visibility="{Binding IsProcessing, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                   Style="{StaticResource MaterialDesignLinearProgressBar}"/>
+
+                        <!-- Main Content Area -->
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="16">
+                            <StackPanel>
+                                
+                                <!-- Welcome Message -->
+                                <TextBlock Text="🚀 Analysis Norm Enhanced - CHAT 3-4" 
+                                         FontSize="24" FontWeight="Bold"
+                                         HorizontalAlignment="Center"
+                                         Margin="0,20,0,10"/>
+                                
+                                <TextBlock Text="Система продвинутого анализа норм расхода электроэнергии с полной поддержкой дедупликации, объединения участков и Excel экспорта" 
+                                         FontSize="14" 
+                                         TextAlignment="Center"
+                                         Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                         TextWrapping="Wrap"
+                                         Margin="0,0,0,30"/>
+
+                                <!-- Feature Highlights -->
+                                <UniformGrid Columns="2" Margin="0,0,0,20">
+                                    <Border Background="#E8F5E8" BorderBrush="#4CAF50" BorderThickness="1" 
+                                          CornerRadius="4" Padding="12" Margin="4">
+                                        <StackPanel>
+                                            <materialDesign:PackIcon Kind="Html5" Width="24" Height="24" 
+                                                                   Foreground="#4CAF50" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="Advanced HTML Parser" FontWeight="SemiBold" 
+                                                     HorizontalAlignment="Center" Margin="0,4,0,2"/>
+                                            <TextBlock Text="Интеллектуальная дедупликация, объединение участков, извлечение ТУ3/Ю7 данных" 
+                                                     FontSize="11" TextWrapping="Wrap" TextAlignment="Center"/>
+                                        </StackPanel>
+                                    </Border>
+                                    
+                                    <Border Background="#E3F2FD" BorderBrush="#2196F3" BorderThickness="1" 
+                                          CornerRadius="4" Padding="12" Margin="4">
+                                        <StackPanel>
+                                            <materialDesign:PackIcon Kind="FileExcel" Width="24" Height="24" 
+                                                                   Foreground="#2196F3" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="Professional Excel Export" FontWeight="SemiBold" 
+                                                     HorizontalAlignment="Center" Margin="0,4,0,2"/>
+                                            <TextBlock Text="Полное форматирование, условная подсветка, диагностические отчеты" 
+                                                     FontSize="11" TextWrapping="Wrap" TextAlignment="Center"/>
+                                        </StackPanel>
+                                    </Border>
+                                    
+                                    <Border Background="#FFF3E0" BorderBrush="#FF9800" BorderThickness="1" 
+                                          CornerRadius="4" Padding="12" Margin="4">
+                                        <StackPanel>
+                                            <materialDesign:PackIcon Kind="Settings" Width="24" Height="24" 
+                                                                   Foreground="#FF9800" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="Flexible Configuration" FontWeight="SemiBold" 
+                                                     HorizontalAlignment="Center" Margin="0,4,0,2"/>
+                                            <TextBlock Text="Гибкая система настроек, профили для разных сред, валидация" 
+                                                     FontSize="11" TextWrapping="Wrap" TextAlignment="Center"/>
+                                        </StackPanel>
+                                    </Border>
+                                    
+                                    <Border Background="#F3E5F5" BorderBrush="#9C27B0" BorderThickness="1" 
+                                          CornerRadius="4" Padding="12" Margin="4">
+                                        <StackPanel>
+                                            <materialDesign:PackIcon Kind="Monitor" Width="24" Height="24" 
+                                                                   Foreground="#9C27B0" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="Enhanced Diagnostics" FontWeight="SemiBold" 
+                                                     HorizontalAlignment="Center" Margin="0,4,0,2"/>
+                                            <TextBlock Text="Встроенная диагностика, мониторинг производительности, автотестирование" 
+                                                     FontSize="11" TextWrapping="Wrap" TextAlignment="Center"/>
+                                        </StackPanel>
+                                    </Border>
+                                </UniformGrid>
+
+                                <!-- Quick Start Guide -->
+                                <Expander Header="📋 Быстрый старт" Margin="0,20,0,0">
+                                    <StackPanel Margin="16,8">
+                                        <TextBlock Text="1. Нажмите 'Загрузить маршруты' и выберите HTML файлы с данными маршрутов" 
+                                                 Margin="0,4"/>
+                                        <TextBlock Text="2. Нажмите 'Загрузить нормы' и выберите HTML файлы с нормами расхода" 
+                                                 Margin="0,4"/>
+                                        <TextBlock Text="3. Дождитесь завершения обработки (отслеживайте в левой панели)" 
+                                                 Margin="0,4"/>
+                                        <TextBlock Text="4. Нажмите 'Экспорт Excel' для создания отчета с полным форматированием" 
+                                                 Margin="0,4"/>
+                                        <TextBlock Text="5. Используйте 'Диагностика' для проверки качества данных и производительности" 
+                                                 Margin="0,4"/>
+                                    </StackPanel>
+                                </Expander>
+
+                                <!-- Log Messages -->
+                                <Expander Header="📝 Журнал операций" Margin="0,16,0,0">
+                                    <ListBox ItemsSource="{Binding LogMessages}" 
+                                           MaxHeight="300"
+                                           Background="Transparent"
+                                           ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Margin="4,2">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        
+                                                        <TextBlock Grid.Column="0" Text="{Binding Source}" 
+                                                                 FontWeight="SemiBold" FontSize="11" 
+                                                                 Margin="0,0,8,0"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding Message}" 
+                                                                 TextWrapping="Wrap" FontSize="11"/>
+                                                        <TextBlock Grid.Column="2" Text="{Binding Timestamp}" 
+                                                                 FontSize="10" 
+                                                                 Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                                                    </Grid>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Expander>
+
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </materialDesign:Card>
+
+                <!-- Right Panel - Diagnostics and Alerts -->
+                <materialDesign:Card Grid.Column="4" materialDesign:ShadowAssist.ShadowDepth="Depth2">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="16">
+                            
+                            <!-- Performance Metrics -->
+                            <TextBlock Text="⚡ Производительность" Style="{StaticResource SectionHeaderStyle}"/>
+                            
+                            <Grid Margin="0,0,0,16">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <StackPanel Grid.Row="0" Margin="0,0,0,8">
+                                    <TextBlock Text="Память" FontSize="12" FontWeight="Medium"/>
+                                    <TextBlock Text="{Binding MemoryUsage}" FontSize="11" 
+                                             Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                                </StackPanel>
+                                
+                                <StackPanel Grid.Row="1" Margin="0,0,0,8">
+                                    <TextBlock Text="Последняя операция" FontSize="12" FontWeight="Medium"/>
+                                    <TextBlock Text="{Binding LastOperationTime}" FontSize="11" 
+                                             Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                                </StackPanel>
+                                
+                                <StackPanel Grid.Row="2" Margin="0,0,0,8">
+                                    <TextBlock Text="Конфигурация" FontSize="12" FontWeight="Medium"/>
+                                    <TextBlock Text="{Binding ConfigurationStatus}" FontSize="11" 
+                                             Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <Separator Margin="0,8,0,16"/>
+
+                            <!-- Diagnostic Alerts -->
+                            <TextBlock Text="🚨 Диагностические уведомления" Style="{StaticResource SectionHeaderStyle}"/>
+                            
+                            <ListBox ItemsSource="{Binding DiagnosticAlerts}"
+                                   Background="Transparent"
+                                   BorderThickness="0"
+                                   MaxHeight="200"
+                                   ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,2" Padding="8,4" CornerRadius="3"
+                                              Background="{Binding Level, Converter={StaticResource DiagnosticAlertLevelToColorConverter}}">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="11"/>
+                                                <TextBlock Text="{Binding Message}" FontSize="10" 
+                                                         TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <Separator Margin="0,16,0,8"/>
+
+                            <!-- Quick Actions -->
+                            <TextBlock Text="⚡ Быстрые действия" Style="{StaticResource SectionHeaderStyle}"/>
+                            
+                            <StackPanel>
+                                <Button Style="{StaticResource MaterialDesignOutlinedButton}"
+                                      Command="{Binding ClearLogCommand}"
+                                      HorizontalAlignment="Stretch"
+                                      Margin="0,2">
+                                    <StackPanel Orientation="Horizontal">
+                                        <materialDesign:PackIcon Kind="Delete" Width="14" Height="14" Margin="0,0,4,0"/>
+                                        <TextBlock Text="Очистить лог" FontSize="11"/>
+                                    </StackPanel>
+                                </Button>
+                                
+                                <Button Style="{StaticResource MaterialDesignOutlinedButton}"
+                                      Command="{Binding ImportConfigurationCommand}"
+                                      HorizontalAlignment="Stretch"
+                                      Margin="0,2">
+                                    <StackPanel Orientation="Horizontal">
+                                        <materialDesign:PackIcon Kind="Import" Width="14" Height="14" Margin="0,0,4,0"/>
+                                        <TextBlock Text="Импорт настроек" FontSize="11"/>
+                                    </StackPanel>
+                                </Button>
+                                
+                                <Button Style="{StaticResource MaterialDesignOutlinedButton}"
+                                      Command="{Binding ExportConfigurationCommand}"
+                                      HorizontalAlignment="Stretch"
+                                      Margin="0,2">
+                                    <StackPanel Orientation="Horizontal">
+                                        <materialDesign:PackIcon Kind="Export" Width="14" Height="14" Margin="0,0,4,0"/>
+                                        <TextBlock Text="Экспорт настроек" FontSize="11"/>
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+
+                        </StackPanel>
+                    </ScrollViewer>
+                </materialDesign:Card>
+
             </Grid>
-        </Border>
 
-    </Grid>
+            <!-- Status Bar - Enhanced -->
+            <materialDesign:Card Grid.Row="2" Margin="8,4,8,8" 
+                               materialDesign:ShadowAssist.ShadowDepth="Depth1">
+                <Grid Margin="16,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Status Text -->
+                    <TextBlock Grid.Column="0" Text="{Binding StatusText}" 
+                             Style="{StaticResource StatusBarTextStyle}" FontWeight="Medium"/>
+
+                    <!-- Processing Indicator -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" 
+                              Visibility="{Binding IsProcessing, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ProgressBar IsIndeterminate="True" Width="100" Height="4" 
+                                   VerticalAlignment="Center" Margin="8,0"/>
+                        <TextBlock Text="Обработка..." Style="{StaticResource StatusBarTextStyle}"/>
+                    </StackPanel>
+
+                    <!-- Memory Usage -->
+                    <TextBlock Grid.Column="2" Text="{Binding MemoryUsage, StringFormat='Память: {0}'}" 
+                             Style="{StaticResource StatusBarTextStyle}"/>
+
+                    <!-- Version Info -->
+                    <TextBlock Grid.Column="3" Text="v3.4 (CHAT 3-4)" 
+                             Style="{StaticResource StatusBarTextStyle}" FontWeight="Light"/>
+                </Grid>
+            </materialDesign:Card>
+
+        </Grid>
+    </materialDesign:DialogHost>
 </Window>
