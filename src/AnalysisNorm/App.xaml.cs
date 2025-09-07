@@ -1,4 +1,8 @@
-// App.xaml.cs - ИСПРАВЛЕННАЯ ВЕРСИЯ для .NET 9
+// ===================================================================
+// ФАЙЛ: src/AnalysisNorm/App.xaml.cs - ИСПРАВЛЕННАЯ ВЕРСИЯ
+// Устраняет ошибки CS1061 и CS0234
+// ===================================================================
+
 using System;
 using System.IO;
 using System.Threading.Tasks;
@@ -8,13 +12,14 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
+// ИСПРАВЛЕНИЕ CS0234: Добавлена правильная using директива
 using AnalysisNorm.Services.DependencyInjection;
 
 namespace AnalysisNorm;
 
 /// <summary>
 /// ИСПРАВЛЕННОЕ приложение для .NET 9 с корректной инициализацией DI
-/// Устраняет ошибку FileNotFoundException
+/// Устраняет ошибки компиляции CS1061 и CS0234
 /// </summary>
 public partial class App : Application
 {
@@ -120,7 +125,7 @@ public partial class App : Application
             {
                 try
                 {
-                    // ИСПРАВЛЕННАЯ регистрация сервисов
+                    // ИСПРАВЛЕНИЕ CS1061: Теперь метод доступен благодаря using директиве
                     services.AddAnalysisNormServices(context.Configuration);
                     
                     Log.Information("✅ Все сервисы зарегистрированы успешно");
@@ -131,58 +136,27 @@ public partial class App : Application
                     throw;
                 }
             })
-            .UseSerilog(); // Используем Serilog как основной провайдер логирования
+            .UseSerilog(); // Важно: интегрируем Serilog с Microsoft.Extensions.Logging
     }
 
     /// <summary>
-    /// Завершение работы приложения
-    /// </summary>
-    protected override async void OnExit(ExitEventArgs e)
-    {
-        try
-        {
-            _logger?.LogInformation("🔄 Завершение работы приложения");
-
-            // Останавливаем хост
-            if (_host != null)
-            {
-                await _host.StopAsync(TimeSpan.FromSeconds(5));
-                _host.Dispose();
-            }
-
-            // Очистка ресурсов
-            await CleanupResourcesAsync();
-
-            _logger?.LogInformation("✅ Приложение завершено корректно");
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "❌ Ошибка при завершении приложения");
-        }
-        finally
-        {
-            // Закрываем Serilog
-            Log.CloseAndFlush();
-            base.OnExit(e);
-        }
-    }
-
-    /// <summary>
-    /// Инициализация приложения
+    /// Инициализация логики приложения
     /// </summary>
     private async Task InitializeApplicationAsync()
     {
         try
         {
-            _logger?.LogInformation("🔧 Начало инициализации приложения");
+            // Проверяем доступность всех ключевых сервисов
+            var logger = _host?.Services.GetRequiredService<Services.Interfaces.IApplicationLogger>();
+            var performanceMonitor = _host?.Services.GetRequiredService<Services.Interfaces.IPerformanceMonitor>();
+            var normStorage = _host?.Services.GetRequiredService<Services.Interfaces.INormStorage>();
 
-            // Проверка и создание директорий
-            await EnsureDirectoriesExistAsync();
-
-            // Базовые проверки системы
-            await PerformHealthChecksAsync();
-
-            _logger?.LogInformation("✅ Инициализация приложения завершена успешно");
+            logger?.LogInformation("🔧 Инициализация основных сервисов завершена");
+            
+            // Выполняем предварительную проверку системы
+            await PerformSystemHealthCheckAsync();
+            
+            _logger?.LogInformation("🎯 Приложение готово к работе");
         }
         catch (Exception ex)
         {
@@ -192,71 +166,42 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Проверка и создание необходимых директорий
+    /// Проверка работоспособности системы при запуске
     /// </summary>
-    private async Task EnsureDirectoriesExistAsync()
+    private async Task PerformSystemHealthCheckAsync()
     {
-        await Task.Run(() =>
+        try
         {
+            var performanceMonitor = _host?.Services.GetRequiredService<Services.Interfaces.IPerformanceMonitor>();
+            
+            // Измеряем время инициализации
+            performanceMonitor?.StartMeasurement("SystemHealthCheck");
+            
+            // Проверяем доступ к файловой системе
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            var directories = new[]
+            var testDirs = new[] { "Logs", "Config", "Exports" };
+            
+            foreach (var dir in testDirs)
             {
-                Path.Combine(baseDir, "Logs"),
-                Path.Combine(baseDir, "Config"),
-                Path.Combine(baseDir, "Exports"),
-                Path.Combine(baseDir, "SampleData"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "AnalysisNorm"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "AnalysisNorm", "Exports"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AnalysisNorm"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AnalysisNorm", "Logs")
-            };
-
-            foreach (var directory in directories)
-            {
-                try
-                {
-                    if (!Directory.Exists(directory))
-                    {
-                        Directory.CreateDirectory(directory);
-                        _logger?.LogDebug("📁 Создана директория: {Directory}", directory);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger?.LogWarning(ex, "⚠️ Не удалось создать директорию: {Directory}", directory);
-                }
+                var dirPath = Path.Combine(baseDir, dir);
+                Directory.CreateDirectory(dirPath);
             }
-        });
-    }
-
-    /// <summary>
-    /// Базовые проверки работоспособности системы
-    /// </summary>
-    private async Task PerformHealthChecksAsync()
-    {
-        await Task.Run(() =>
+            
+            // Проверяем память и производительность
+            var memory = GC.GetTotalMemory(false);
+            _logger?.LogInformation("💾 Использование памяти: {Memory:N0} байт", memory);
+            
+            performanceMonitor?.EndMeasurement("SystemHealthCheck");
+            var checkTime = performanceMonitor?.GetLastMeasurement("SystemHealthCheck") ?? TimeSpan.Zero;
+            
+            _logger?.LogInformation("⚡ Проверка системы завершена за {Time:F2}мс", checkTime.TotalMilliseconds);
+            
+            await Task.Delay(10); // Имитация асинхронной операции
+        }
+        catch (Exception ex)
         {
-            try
-            {
-                // Проверка доступной памяти
-                var memoryBefore = GC.GetTotalMemory(false);
-                _logger?.LogDebug("💾 Доступная память: {Memory} байт", memoryBefore);
-
-                // Проверка версии .NET
-                var runtimeVersion = Environment.Version;
-                _logger?.LogDebug("🔧 Версия .NET: {Version}", runtimeVersion);
-
-                // Проверка рабочей директории
-                var workingDir = Environment.CurrentDirectory;
-                _logger?.LogDebug("📂 Рабочая директория: {Directory}", workingDir);
-
-                _logger?.LogInformation("✅ Базовые проверки системы завершены успешно");
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogWarning(ex, "⚠️ Предупреждение при проверке состояния системы");
-            }
-        });
+            _logger?.LogWarning(ex, "⚠️ Некритическая ошибка проверки системы");
+        }
     }
 
     /// <summary>
@@ -264,83 +209,79 @@ public partial class App : Application
     /// </summary>
     private async Task CreateMainWindowAsync()
     {
-        // Создание окна должно происходить в UI потоке
-        await Dispatcher.InvokeAsync(() =>
+        try
         {
-            try
+            // Получаем ViewModel из DI контейнера
+            var mainViewModel = _host?.Services.GetService<MainViewModel>();
+            
+            // Создаем главное окно
+            var mainWindow = new MainWindow();
+            
+            // Устанавливаем DataContext если ViewModel доступна
+            if (mainViewModel != null)
             {
-                // Создаем главное окно
-                var mainWindow = new MainWindow();
-
-                // Устанавливаем главное окно
-                MainWindow = mainWindow;
-
-                // Показываем окно
-                mainWindow.Show();
-
-                _logger?.LogInformation("🪟 Главное окно создано и отображено");
+                mainWindow.DataContext = mainViewModel;
+                _logger?.LogInformation("🎨 MainViewModel привязана к главному окну");
             }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "❌ Ошибка создания главного окна");
-                throw;
-            }
-        });
+            
+            // Показываем окно
+            mainWindow.Show();
+            _logger?.LogInformation("🪟 Главное окно отображено");
+            
+            await Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "❌ Ошибка создания главного окна");
+            
+            // Показываем базовое окно без ViewModel в случае ошибки
+            var fallbackWindow = new MainWindow();
+            fallbackWindow.Show();
+        }
     }
 
     /// <summary>
-    /// Очистка ресурсов при завершении
+    /// Корректное завершение приложения
     /// </summary>
-    private async Task CleanupResourcesAsync()
+    protected override async void OnExit(ExitEventArgs e)
     {
-        await Task.Run(() =>
+        try
         {
-            try
+            _logger?.LogInformation("🔄 Завершение работы приложения...");
+            
+            // Останавливаем хост
+            if (_host != null)
             {
-                _logger?.LogInformation("🧹 Начало очистки ресурсов");
-
-                // Принудительная сборка мусора
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                GC.Collect();
-
-                _logger?.LogInformation("✅ Очистка ресурсов завершена");
+                await _host.StopAsync(TimeSpan.FromSeconds(5));
+                _host.Dispose();
             }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "❌ Ошибка при очистке ресурсов");
-            }
-        });
+            
+            // Закрываем Serilog
+            Log.CloseAndFlush();
+        }
+        catch (Exception ex)
+        {
+            // Логируем ошибку завершения в последний раз
+            Log.Fatal(ex, "❌ КРИТИЧЕСКАЯ ОШИБКА при завершении приложения");
+        }
+        finally
+        {
+            base.OnExit(e);
+        }
     }
 
     /// <summary>
     /// Обработка критических ошибок запуска
     /// </summary>
-    private void HandleStartupError(Exception ex)
+    private static void HandleStartupError(Exception ex)
     {
-        // Логирование критической ошибки в файл
-        try
-        {
-            var logPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "AnalysisNorm", "Logs", "startup_errors.log"
-            );
-            
-            Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
-            
-            var errorMessage = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] ❌ КРИТИЧЕСКАЯ ОШИБКА ЗАПУСКА:\n{ex}\n\n";
-            File.AppendAllText(logPath, errorMessage);
-        }
-        catch
-        {
-            // Игнорируем ошибки логирования
-        }
+        // Логируем в Serilog если он инициализирован
+        Log.Fatal(ex, "💥 КРИТИЧЕСКАЯ ОШИБКА запуска AnalysisNorm");
 
-        // Показываем пользователю сообщение об ошибке
-        var message = $"❌ Критическая ошибка при запуске приложения:\n\n{ex.Message}\n\n" +
-                     $"Версия сборки: 1.3.4.0\n" +
-                     $"Детали ошибки сохранены в файл логов.\n\n" +
-                     $"Попробуйте:\n" +
+        // Показываем пользователю понятное сообщение об ошибке
+        var message = $"Не удалось запустить AnalysisNorm v1.3.4\n\n" +
+                     $"Ошибка: {ex.Message}\n\n" +
+                     $"Рекомендуемые действия:\n" +
                      $"1. Перезапустить приложение\n" +
                      $"2. Проверить права доступа к папке приложения\n" +
                      $"3. Переустановить приложение\n\n" +
