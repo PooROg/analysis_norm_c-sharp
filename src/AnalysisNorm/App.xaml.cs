@@ -1,26 +1,24 @@
-// App.xaml.cs - ИСПРАВЛЕНА: убраны конвертеры (они теперь в отдельном файле)
+// App.xaml.cs - МИНИМАЛЬНАЯ ВЕРСИЯ Serilog без проблемных зависимостей
+using System;
 using System.IO;
+using System.Threading.Tasks;
 using System.Windows;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Serilog;
-using AnalysisNorm.Services.DependencyInjection;
-using AnalysisNorm.ViewModels;
-using AnalysisNorm.Infrastructure.Logging;
-using AnalysisNorm.Services.Interfaces;
-using AnalysisNorm.Configuration;
 
 namespace AnalysisNorm;
 
 /// <summary>
-/// CHAT 3-4: Обновленное приложение с полной поддержкой DI и конфигурации
-/// ИСПРАВЛЕНО: убраны конвертеры (они перенесены в Converters/ValueConverters.cs)
+/// ЭТАП 2: Приложение с минимальной настройкой Serilog
+/// Убраны все проблемные зависимости и методы
 /// </summary>
 public partial class App : Application
 {
     private IHost? _host;
-    private IApplicationLogger? _logger;
+    private Microsoft.Extensions.Logging.ILogger? _logger;
 
     /// <summary>
     /// Инициализация приложения при запуске
@@ -29,21 +27,21 @@ public partial class App : Application
     {
         try
         {
-            // Создаем хост приложения с полной конфигурацией DI
+            // Создаем хост приложения с минимальной конфигурацией Serilog
             _host = CreateHostBuilder(e.Args).Build();
             
             // Запускаем хост
             await _host.StartAsync();
             
-            // Получаем логгер
-            _logger = _host.Services.GetRequiredService<IApplicationLogger>();
-            _logger.LogInformation("Приложение Analysis Norm запущено (CHAT 3-4)");
+            // Получаем логгер Microsoft.Extensions.Logging
+            _logger = _host.Services.GetRequiredService<Microsoft.Extensions.Logging.ILogger<App>>();
+            _logger.LogInformation("Приложение Analysis Norm запущено (Этап 2 - минимальный Serilog)");
 
             // Выполняем инициализацию приложения
             await InitializeApplicationAsync();
 
             // Создаем и показываем главное окно
-            await CreateAndShowMainWindowAsync();
+            await CreateMainWindowAsync();
 
             base.OnStartup(e);
         }
@@ -55,7 +53,7 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Создание конфигурации хоста приложения
+    /// Создание хоста приложения с минимальной конфигурацией Serilog
     /// </summary>
     private static IHostBuilder CreateHostBuilder(string[] args)
     {
@@ -66,65 +64,92 @@ public partial class App : Application
                 var env = context.HostingEnvironment;
                 
                 // Основной файл конфигурации
-                config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+                config.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
                 
-                // Файл конфигурации для среды
+                // Файл конфигурации для среды (если существует)
                 config.AddJsonFile($"appsettings.{env.EnvironmentName}.json", optional: true, reloadOnChange: true);
                 
-                // НОВЫЕ конфигурационные файлы для CHAT 4
-                config.AddJsonFile("Config/excel_export.json", optional: true, reloadOnChange: true);
-                config.AddJsonFile("Config/html_parsing.json", optional: true, reloadOnChange: true);
-                config.AddJsonFile("Config/performance.json", optional: true, reloadOnChange: true);
-                config.AddJsonFile("Config/diagnostics.json", optional: true, reloadOnChange: true);
-                
                 // Переменные окружения
-                config.AddEnvironmentVariables(prefix: "ANALYSISNORM_");
+                config.AddEnvironmentVariables();
                 
                 // Аргументы командной строки
                 if (args.Length > 0)
                 {
                     config.AddCommandLine(args);
                 }
-
-                // Пользовательские секреты (только для разработки)
-                if (env.IsDevelopment())
-                {
-                    config.AddUserSecrets<App>();
-                }
             })
             .ConfigureServices((context, services) =>
             {
-                // Регистрация всех сервисов Analysis Norm
-                services.AddAnalysisNormServices(context.Configuration);
-                
-                // Конфигурация для конкретной среды
-                services.ConfigureForEnvironment(context.HostingEnvironment, context.Configuration);
+                // Базовая конфигурация сервисов
+                ConfigureServices(services, context.Configuration);
             })
-            .UseSerilog(); // Используем Serilog как основной логгер
+            .UseSerilog((hostingContext, loggerConfiguration) =>
+            {
+                // МИНИМАЛЬНАЯ настройка Serilog без проблемных методов
+                loggerConfiguration
+                    .WriteTo.Console()
+                    .WriteTo.File("Logs/application-.log", rollingInterval: RollingInterval.Day);
+
+                Console.WriteLine("Serilog настроен с минимальной конфигурацией");
+            });
     }
 
     /// <summary>
-    /// Инициализация приложения с проверками
+    /// Конфигурация сервисов DI контейнера
+    /// </summary>
+    private static void ConfigureServices(IServiceCollection services, IConfiguration configuration)
+    {
+        // Базовые сервисы Microsoft.Extensions
+        services.AddMemoryCache();
+        services.AddLogging();
+        
+        // TODO: Здесь будут добавлены кастомные сервисы на следующих этапах
+        // services.AddAnalysisNormServices(); // Будет добавлено на этапе 3
+    }
+
+    /// <summary>
+    /// Завершение приложения
+    /// </summary>
+    protected override async void OnExit(ExitEventArgs e)
+    {
+        try
+        {
+            await CleanupResourcesAsync();
+            
+            if (_host != null)
+            {
+                await _host.StopAsync(TimeSpan.FromSeconds(5));
+                _host.Dispose();
+            }
+            
+            // Закрываем Serilog
+            Log.CloseAndFlush();
+        }
+        catch (Exception ex)
+        {
+            // Логируем ошибку очистки, но не блокируем выход
+            _logger?.LogError(ex, "Ошибка при завершении приложения");
+        }
+        finally
+        {
+            base.OnExit(e);
+        }
+    }
+
+    /// <summary>
+    /// Инициализация приложения
     /// </summary>
     private async Task InitializeApplicationAsync()
     {
-        if (_host?.Services == null) return;
-
         try
         {
-            _logger?.LogInformation("Начинается инициализация приложения");
+            _logger?.LogInformation("Начало инициализации приложения");
 
-            // Проверяем и создаем необходимые директории
+            // Проверка и создание директорий
             await EnsureDirectoriesExistAsync();
 
-            // Инициализируем конфигурации
-            await InitializeConfigurationsAsync();
-
-            // Выполняем проверки состояния системы
-            await PerformStartupHealthChecksAsync();
-
-            // Инициализируем сервисы
-            await InitializeServicesAsync();
+            // Базовые проверки системы
+            await PerformHealthChecksAsync();
 
             _logger?.LogInformation("Инициализация приложения завершена успешно");
         }
@@ -149,9 +174,9 @@ public partial class App : Application
                 Path.Combine(baseDir, "Config"),
                 Path.Combine(baseDir, "Exports"),
                 Path.Combine(baseDir, "SampleData"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Documents), "AnalysisNorm"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Documents), "AnalysisNorm", "Exports"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Documents), "AnalysisNorm", "Diagnostics"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "AnalysisNorm"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "AnalysisNorm", "Exports"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "AnalysisNorm", "Diagnostics"),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AnalysisNorm"),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AnalysisNorm", "Logs")
             };
@@ -175,309 +200,102 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Инициализация конфигураций
+    /// Базовые проверки работоспособности системы
     /// </summary>
-    private async Task InitializeConfigurationsAsync()
+    private async Task PerformHealthChecksAsync()
     {
-        if (_host?.Services == null) return;
-
-        var configService = _host.Services.GetRequiredService<IConfigurationService>();
-        
-        try
+        await Task.Run(() =>
         {
-            // Загружаем все основные конфигурации
-            var excelConfig = configService.GetConfiguration<ExcelExportConfiguration>();
-            var htmlConfig = configService.GetConfiguration<HtmlParsingConfiguration>();
-            var perfConfig = configService.GetConfiguration<PerformanceConfiguration>();
-            var diagConfig = configService.GetConfiguration<DiagnosticsConfiguration>();
-
-            _logger?.LogInformation("Конфигурации инициализированы: Excel={ExcelValid}, HTML={HtmlValid}, Performance={PerfValid}, Diagnostics={DiagValid}",
-                excelConfig != null, htmlConfig != null, perfConfig != null, diagConfig != null);
-
-            // Выполняем валидацию конфигураций
-            await ValidateConfigurationsAsync(configService);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Ошибка инициализации конфигураций");
-        }
-    }
-
-    /// <summary>
-    /// Валидация конфигураций
-    /// </summary>
-    private async Task ValidateConfigurationsAsync(IConfigurationService configService)
-    {
-        await Task.Yield();
-
-        try
-        {
-            var diagnostics = configService.GetDiagnostics();
-            
-            if (diagnostics.LoadedConfigurationsCount < 4)
+            try
             {
-                _logger?.LogWarning("Загружено только {Count} конфигураций из ожидаемых 4", 
-                    diagnostics.LoadedConfigurationsCount);
+                // Проверка доступной памяти
+                var memoryBefore = GC.GetTotalMemory(false);
+                _logger?.LogDebug("Доступная память: {Memory} байт", memoryBefore);
+
+                // Базовые проверки среды выполнения
+                var currentDomain = AppDomain.CurrentDomain;
+                _logger?.LogDebug("Домен приложения: {Domain}", currentDomain.FriendlyName);
+
+                // Проверка версии .NET
+                var runtimeVersion = Environment.Version;
+                _logger?.LogDebug("Версия .NET: {Version}", runtimeVersion);
+
+                _logger?.LogInformation("Базовые проверки системы завершены успешно");
             }
-
-            _logger?.LogInformation("Валидация конфигурации завершена: конфигураций {Count}", 
-                diagnostics.LoadedConfigurationsCount);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Ошибка валидации конфигураций");
-        }
-    }
-
-    /// <summary>
-    /// Проверки состояния системы при запуске
-    /// </summary>
-    private async Task PerformStartupHealthChecksAsync()
-    {
-        if (_host?.Services == null) return;
-
-        try
-        {
-            var systemDiagnostics = _host.Services.GetRequiredService<ISystemDiagnostics>();
-            var healthCheck = await systemDiagnostics.QuickHealthCheckAsync();
-
-            if (healthCheck.IsHealthy)
+            catch (Exception ex)
             {
-                _logger?.LogInformation("Проверка состояния системы пройдена успешно: {Status}", healthCheck.Status);
+                _logger?.LogWarning(ex, "Предупреждение при проверке состояния системы");
             }
-            else
-            {
-                _logger?.LogWarning("Проблемы в проверке состояния системы: {Status}", healthCheck.Status);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "Не удалось выполнить проверку состояния системы");
-        }
-    }
-
-    /// <summary>
-    /// Инициализация сервисов
-    /// </summary>
-    private async Task InitializeServicesAsync()
-    {
-        if (_host?.Services == null) return;
-
-        try
-        {
-            // Прогреваем кэш сервисов
-            var normStorage = _host.Services.GetRequiredService<INormStorage>();
-            var performanceMonitor = _host.Services.GetRequiredService<IPerformanceMonitor>();
-
-            // Запускаем мониторинг производительности
-            performanceMonitor.StartOperation("Application_Startup");
-
-            await Task.Delay(100); // Небольшая задержка для инициализации
-
-            performanceMonitor.EndOperation("Application_Startup");
-
-            _logger?.LogInformation("Сервисы инициализированы успешно");
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Ошибка инициализации сервисов");
-        }
+        });
     }
 
     /// <summary>
     /// Создание и отображение главного окна
     /// </summary>
-    private async Task CreateAndShowMainWindowAsync()
+    private async Task CreateMainWindowAsync()
     {
-        if (_host?.Services == null) return;
-
-        try
+        // Создание окна должно происходить в UI потоке
+        await Dispatcher.InvokeAsync(() =>
         {
-            // Получаем главную ViewModel
-            var mainViewModel = _host.Services.GetRequiredService<EnhancedMainViewModel>();
-            
-            // Создаем главное окно
-            var mainWindow = new MainWindow
+            try
             {
-                DataContext = mainViewModel
-            };
+                // Создаем главное окно
+                var mainWindow = new MainWindow();
 
-            // Устанавливаем главное окно
-            MainWindow = mainWindow;
+                // Устанавливаем главное окно
+                MainWindow = mainWindow;
 
-            // Загружаем настройки окна
-            await LoadWindowSettingsAsync(mainWindow);
+                // Показываем окно
+                mainWindow.Show();
 
-            // Показываем окно
-            mainWindow.Show();
-
-            _logger?.LogInformation("Главное окно создано и отображено");
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Ошибка создания главного окна");
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// Загрузка настроек окна
-    /// </summary>
-    private async Task LoadWindowSettingsAsync(Window window)
-    {
-        if (_host?.Services == null) return;
-
-        try
-        {
-            var userPreferences = _host.Services.GetRequiredService<IUserPreferencesService>();
-            var preferences = await userPreferences.LoadUserPreferencesAsync();
-
-            // Применяем настройки позиции и размера окна
-            if (preferences.MainWindowPosition.Width > 0 && preferences.MainWindowPosition.Height > 0)
-            {
-                window.Width = preferences.MainWindowPosition.Width;
-                window.Height = preferences.MainWindowPosition.Height;
-                
-                if (preferences.MainWindowPosition.X >= 0 && preferences.MainWindowPosition.Y >= 0)
-                {
-                    window.Left = preferences.MainWindowPosition.X;
-                    window.Top = preferences.MainWindowPosition.Y;
-                }
-                
-                if (preferences.MainWindowPosition.IsMaximized)
-                {
-                    window.WindowState = WindowState.Maximized;
-                }
+                _logger?.LogInformation("Главное окно создано и отображено");
             }
-
-            _logger?.LogDebug("Настройки окна загружены");
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "Не удалось загрузить настройки окна");
-        }
-    }
-
-    /// <summary>
-    /// Сохранение настроек окна при закрытии
-    /// </summary>
-    private async Task SaveWindowSettingsAsync(Window window)
-    {
-        if (_host?.Services == null) return;
-
-        try
-        {
-            var userPreferences = _host.Services.GetRequiredService<IUserPreferencesService>();
-            var preferences = await userPreferences.LoadUserPreferencesAsync();
-
-            // Обновляем настройки окна
-            var updatedPosition = preferences.MainWindowPosition with
+            catch (Exception ex)
             {
-                X = (int)window.Left,
-                Y = (int)window.Top,
-                Width = (int)window.Width,
-                Height = (int)window.Height,
-                IsMaximized = window.WindowState == WindowState.Maximized
-            };
-
-            var updatedPreferences = preferences with 
-            { 
-                MainWindowPosition = updatedPosition,
-                LastModified = DateTime.UtcNow
-            };
-
-            await userPreferences.SaveUserPreferencesAsync(updatedPreferences);
-            _logger?.LogDebug("Настройки окна сохранены");
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "Не удалось сохранить настройки окна");
-        }
-    }
-
-    /// <summary>
-    /// Обработка завершения работы приложения
-    /// </summary>
-    protected override async void OnExit(ExitEventArgs e)
-    {
-        try
-        {
-            _logger?.LogInformation("Начинается завершение работы приложения");
-
-            // Сохраняем настройки окна
-            if (MainWindow != null)
-            {
-                await SaveWindowSettingsAsync(MainWindow);
+                _logger?.LogError(ex, "Ошибка создания главного окна");
+                throw;
             }
-
-            // Выполняем очистку ресурсов
-            await CleanupResourcesAsync();
-
-            // Останавливаем хост
-            if (_host != null)
-            {
-                await _host.StopAsync(TimeSpan.FromSeconds(5));
-                _host.Dispose();
-            }
-
-            _logger?.LogInformation("Приложение завершено успешно");
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Ошибка при завершении работы приложения");
-        }
-        finally
-        {
-            // Очищаем Serilog
-            Log.CloseAndFlush();
-            base.OnExit(e);
-        }
+        });
     }
 
     /// <summary>
-    /// Очистка ресурсов приложения
+    /// Очистка ресурсов при завершении
     /// </summary>
     private async Task CleanupResourcesAsync()
     {
-        if (_host?.Services == null) return;
-
-        try
+        await Task.Run(() =>
         {
-            // Останавливаем мониторинг производительности
-            var performanceMonitor = _host.Services.GetService<IPerformanceMonitor>();
-            performanceMonitor?.Dispose();
-
-            // Очищаем кэш
-            var memoryCache = _host.Services.GetService<Microsoft.Extensions.Caching.Memory.IMemoryCache>();
-            if (memoryCache is IDisposable disposableCache)
+            try
             {
-                disposableCache.Dispose();
+                _logger?.LogInformation("Начало очистки ресурсов");
+
+                // Принудительная сборка мусора
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+
+                _logger?.LogInformation("Очистка ресурсов завершена");
             }
-
-            // Принудительная сборка мусора
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            GC.Collect();
-
-            await Task.Delay(100); // Небольшая задержка для завершения операций
-
-            _logger?.LogDebug("Очистка ресурсов завершена");
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "Ошибки при очистке ресурсов");
-        }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Ошибка при очистке ресурсов");
+            }
+        });
     }
 
     /// <summary>
-    /// Обработка критической ошибки запуска
+    /// Обработка критических ошибок запуска
     /// </summary>
     private void HandleStartupError(Exception ex)
     {
+        // Логирование критической ошибки в файл
         try
         {
-            // Логируем в файл если возможно
-            var logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs", "startup_error.log");
+            var logPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "AnalysisNorm", "Logs", "startup_errors.log"
+            );
+            
             Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
             
             var errorMessage = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] КРИТИЧЕСКАЯ ОШИБКА ЗАПУСКА: {ex}\n";
@@ -515,38 +333,5 @@ public partial class App : Application
     {
         return (Current as App)?._host?.Services?.GetRequiredService<T>() 
                ?? throw new InvalidOperationException($"Сервис {typeof(T).Name} не зарегистрирован");
-    }
-}
-
-/// <summary>
-/// Расширения для настройки среды
-/// </summary>
-public static class ServiceConfigurationExtensions
-{
-    public static IServiceCollection ConfigureForEnvironment(
-        this IServiceCollection services, 
-        IHostEnvironment environment, 
-        IConfiguration configuration)
-    {
-        if (environment.IsDevelopment())
-        {
-            // Настройки для разработки
-            services.Configure<DiagnosticsConfiguration>(options =>
-            {
-                options.EnableDetailedLogging = true;
-                options.EnablePerformanceAlerts = true;
-            });
-        }
-        else if (environment.IsProduction())
-        {
-            // Настройки для продакшена
-            services.Configure<PerformanceConfiguration>(options =>
-            {
-                options.EnablePerformanceLogging = true;
-                options.MaxMemoryUsageMB = 150; // Строже в продакшене
-            });
-        }
-
-        return services;
     }
 }

@@ -1,109 +1,105 @@
-// MainWindow.xaml.cs - ИСПРАВЛЕН для CHAT 3-4
-using System.Windows;
-using AnalysisNorm.ViewModels;
+// MainWindow.xaml.cs - ПОЛНОЕ ИСПРАВЛЕНИЕ для Этапа 1
+using System;                               // Добавлено для Exception, EventArgs, ArgumentNullException
+using System.ComponentModel;                // Добавлено для CancelEventArgs
+using System.Threading.Tasks;               // Добавлено для Task
+using System.Windows;                       // Уже было
+using System.Windows.Controls;              // Добавлено для SizeChangedEventArgs
+
+// ВРЕМЕННО отключены до создания собственных пространств имен
+// using AnalysisNorm.ViewModels;          // Будет включено на этапе 2
 
 namespace AnalysisNorm;
 
 /// <summary>
-/// ИСПРАВЛЕННОЕ главное окно приложения для CHAT 3-4
-/// Интегрируется с EnhancedMainViewModel и новой функциональностью
-/// Минимальный code-behind согласно MVVM паттерну
+/// ЭТАП 1: Полностью исправленное главное окно приложения
+/// Убраны все зависимости от несуществующих классов
+/// Минимальный code-behind до создания ViewModels
 /// </summary>
 public partial class MainWindow : Window
 {
     /// <summary>
-    /// Конструктор по умолчанию - ViewModel будет установлена через DI
+    /// Конструктор по умолчанию
     /// </summary>
     public MainWindow()
     {
         InitializeComponent();
         
-        // ViewModel будет установлена через DI в App.xaml.cs
-        // DataContext устанавливается в App.CreateAndShowMainWindowAsync()
-        
-        // Подписка на событие закрытия для корректной очистки ресурсов
+        // Подписка на события окна
         Closing += MainWindow_Closing;
-        
-        // Подписка на события для сохранения настроек окна
         LocationChanged += MainWindow_LocationChanged;
         SizeChanged += MainWindow_SizeChanged;
         StateChanged += MainWindow_StateChanged;
+        
+        // Установка базовых свойств окна
+        Title = "Анализатор норм расхода электроэнергии РЖД v3.4 (Этап 1)";
     }
 
     /// <summary>
-    /// Альтернативный конструктор с явной передачей ViewModel (для совместимости)
+    /// Обработка закрытия окна - упрощенная версия без ViewModel
     /// </summary>
-    public MainWindow(EnhancedMainViewModel viewModel) : this()
-    {
-        DataContext = viewModel;
-    }
-
-    /// <summary>
-    /// Обработка закрытия окна с уведомлением ViewModel
-    /// </summary>
-    private async void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    private async void MainWindow_Closing(object? sender, CancelEventArgs e)
     {
         try
         {
-            if (DataContext is EnhancedMainViewModel viewModel)
+            // Простое подтверждение закрытия без проверки активных операций
+            var result = MessageBox.Show(
+                "Вы уверены, что хотите закрыть приложение?",
+                "Подтверждение закрытия",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result == MessageBoxResult.No)
             {
-                // Проверяем, есть ли активные операции
-                if (viewModel.IsProcessing)
-                {
-                    var result = MessageBox.Show(
-                        "Выполняется обработка данных. Вы уверены, что хотите закрыть приложение?",
-                        "Подтверждение закрытия",
-                        MessageBoxButton.YesNo,
-                        MessageBoxImage.Question);
-
-                    if (result == MessageBoxResult.No)
-                    {
-                        e.Cancel = true;
-                        return;
-                    }
-                }
-
-                // Даем ViewModel возможность выполнить cleanup
-                // await viewModel.OnWindowClosingAsync(); // Будет реализован в полной версии
+                e.Cancel = true;
+                return;
             }
+
+            // Базовая очистка ресурсов с минимальной задержкой
+            await Task.Delay(50); // Даем время на завершение операций
         }
         catch (Exception ex)
         {
-            // Логируем ошибку, но не блокируем закрытие
+            // Логируем ошибку в Debug консоль, но не блокируем закрытие
             System.Diagnostics.Debug.WriteLine($"Ошибка при закрытии окна: {ex.Message}");
         }
     }
 
     /// <summary>
-    /// Обработка изменения позиции окна для автосохранения
+    /// Обработка изменения позиции окна
+    /// ЭТАП 1: Заглушка - будет реализовано через UserPreferencesService на этапе 3
     /// </summary>
     private void MainWindow_LocationChanged(object? sender, EventArgs e)
     {
-        // Сохранение позиции окна будет реализовано через UserPreferencesService
-        // в будущих версиях
+        // TODO: Сохранение позиции окна будет реализовано через UserPreferencesService
+        // в следующих этапах после создания инфраструктуры
     }
 
     /// <summary>
-    /// Обработка изменения размера окна для автосохранения
+    /// Обработка изменения размера окна
+    /// ЭТАП 1: Заглушка - будет реализовано через UserPreferencesService на этапе 3
     /// </summary>
     private void MainWindow_SizeChanged(object? sender, SizeChangedEventArgs e)
     {
-        // Сохранение размера окна будет реализовано через UserPreferencesService
-        // в будущих версиях
+        // TODO: Сохранение размера окна будет реализовано через UserPreferencesService
+        // в следующих этапах после создания инфраструктуры
     }
 
     /// <summary>
     /// Обработка изменения состояния окна (максимизация/восстановление)
+    /// ЭТАП 1: Заглушка - будет реализовано через UserPreferencesService на этапе 3
     /// </summary>
     private void MainWindow_StateChanged(object? sender, EventArgs e)
     {
-        // Сохранение состояния окна будет реализовано через UserPreferencesService
-        // в будущих версиях
+        // TODO: Сохранение состояния окна будет реализовано через UserPreferencesService
+        // в следующих этапах после создания инфраструктуры
     }
 
+    // ===== МЕТОДЫ ДЛЯ БУДУЩИХ ЭТАПОВ (ВРЕМЕННО ЗАКОММЕНТИРОВАНЫ) =====
+    
+    /*
     /// <summary>
-    /// НОВЫЙ метод: Установка ViewModel через DI
-    /// Вызывается из App.xaml.cs после создания окна
+    /// ЭТАП 2: Установка ViewModel через DI
+    /// Будет раскомментирован после создания EnhancedMainViewModel
     /// </summary>
     public void SetViewModel(EnhancedMainViewModel viewModel)
     {
@@ -111,7 +107,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// НОВЫЙ метод: Применение настроек окна из конфигурации
+    /// ЭТАП 3: Применение настроек окна из конфигурации
+    /// Будет раскомментирован после создания WindowPosition класса
     /// </summary>
     public void ApplyWindowSettings(WindowPosition position)
     {
@@ -146,7 +143,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// НОВЫЙ метод: Получение текущих настроек окна
+    /// ЭТАП 3: Получение текущих настроек окна
+    /// Будет раскомментирован после создания WindowPosition класса
     /// </summary>
     public WindowPosition GetCurrentWindowSettings()
     {
@@ -169,139 +167,81 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Обработка нажатия клавиш для горячих клавиш
+    /// ЭТАП 2: Альтернативный конструктор с явной передачей ViewModel
+    /// Будет раскомментирован после создания EnhancedMainViewModel
     /// </summary>
-    protected override void OnKeyDown(System.Windows.Input.KeyEventArgs e)
+    public MainWindow(EnhancedMainViewModel viewModel) : this()
+    {
+        DataContext = viewModel;
+    }
+    */
+
+    // ===== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ =====
+
+    /// <summary>
+    /// Метод для отображения простых сообщений пользователю
+    /// Используется для отладки на этапе 1
+    /// </summary>
+    private void ShowMessage(string message, string title = "Информация")
     {
         try
         {
-            // Горячие клавиши для основных функций
-            if (e.Key == System.Windows.Input.Key.F5)
+            MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Ошибка отображения сообщения: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Метод для безопасного логирования на этапе 1
+    /// Будет заменен на полноценный логгер на этапе 2
+    /// </summary>
+    private void LogMessage(string message, string level = "Info")
+    {
+        try
+        {
+            var timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
+            var logEntry = $"[{timestamp}] [{level}] MainWindow: {message}";
+            System.Diagnostics.Debug.WriteLine(logEntry);
+            
+            // TODO: На этапе 2 заменить на полноценный логгер
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Ошибка логирования: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Проверка корректности состояния окна
+    /// Диагностический метод для этапа 1
+    /// </summary>
+    private bool ValidateWindowState()
+    {
+        try
+        {
+            // Базовые проверки состояния окна
+            if (Width <= 0 || Height <= 0)
             {
-                // F5 - Обновить/Диагностика
-                if (DataContext is EnhancedMainViewModel viewModel)
-                {
-                    viewModel.RunDiagnosticsCommand?.Execute(null);
-                }
-                e.Handled = true;
+                LogMessage("Некорректные размеры окна", "Warning");
+                return false;
             }
-            else if (e.KeyboardDevice.Modifiers == System.Windows.Input.ModifierKeys.Control)
+
+            if (Left < -Width || Top < -Height)
             {
-                switch (e.Key)
-                {
-                    case System.Windows.Input.Key.O:
-                        // Ctrl+O - Открыть файлы маршрутов
-                        if (DataContext is EnhancedMainViewModel viewModel1)
-                        {
-                            viewModel1.LoadRoutesCommand?.Execute(null);
-                        }
-                        e.Handled = true;
-                        break;
-
-                    case System.Windows.Input.Key.S:
-                        // Ctrl+S - Экспорт в Excel
-                        if (DataContext is EnhancedMainViewModel viewModel2)
-                        {
-                            viewModel2.ExportToExcelCommand?.Execute(null);
-                        }
-                        e.Handled = true;
-                        break;
-
-                    case System.Windows.Input.Key.D:
-                        // Ctrl+D - Диагностика
-                        if (DataContext is EnhancedMainViewModel viewModel3)
-                        {
-                            viewModel3.RunDiagnosticsCommand?.Execute(null);
-                        }
-                        e.Handled = true;
-                        break;
-                }
+                LogMessage("Окно за пределами экрана", "Warning");
+                return false;
             }
 
-            base.OnKeyDown(e);
+            LogMessage("Состояние окна корректно", "Debug");
+            return true;
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Ошибка обработки горячих клавиш: {ex.Message}");
+            LogMessage($"Ошибка валидации состояния окна: {ex.Message}", "Error");
+            return false;
         }
     }
-
-    /// <summary>
-    /// НОВЫЙ метод: Показать диалог прогресса
-    /// </summary>
-    public void ShowProgressDialog(string title, string message)
-    {
-        try
-        {
-            // В будущих версиях здесь будет показ диалога прогресса
-            // с использованием MaterialDesign DialogHost
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Ошибка показа диалога прогресса: {ex.Message}");
-        }
-    }
-
-    /// <summary>
-    /// НОВЫЙ метод: Скрыть диалог прогресса
-    /// </summary>
-    public void HideProgressDialog()
-    {
-        try
-        {
-            // В будущих версиях здесь будет скрытие диалога прогресса
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Ошибка скрытия диалога прогресса: {ex.Message}");
-        }
-    }
-
-    /// <summary>
-    /// НОВЫЙ метод: Показать уведомление
-    /// </summary>
-    public void ShowNotification(string title, string message, NotificationType type = NotificationType.Information)
-    {
-        try
-        {
-            // Простое уведомление через MessageBox (в будущем - через Snackbar)
-            var icon = type switch
-            {
-                NotificationType.Information => MessageBoxImage.Information,
-                NotificationType.Warning => MessageBoxImage.Warning,
-                NotificationType.Error => MessageBoxImage.Error,
-                NotificationType.Success => MessageBoxImage.Information,
-                _ => MessageBoxImage.Information
-            };
-
-            MessageBox.Show(message, title, MessageBoxButton.OK, icon);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Ошибка показа уведомления: {ex.Message}");
-        }
-    }
-}
-
-/// <summary>
-/// Типы уведомлений для UI
-/// </summary>
-public enum NotificationType
-{
-    Information,
-    Warning,
-    Error,
-    Success
-}
-
-/// <summary>
-/// Настройки позиции и размера окна (дублируется из новых интерфейсов)
-/// </summary>
-public record WindowPosition
-{
-    public int X { get; init; } = 100;
-    public int Y { get; init; } = 100;
-    public int Width { get; init; } = 1600;
-    public int Height { get; init; } = 1000;
-    public bool IsMaximized { get; init; } = false;
 }
