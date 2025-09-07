@@ -1,0 +1,152 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes">
+
+    <!-- Enhanced Material Design Button Styles -->
+    <Style x:Key="PrimaryActionButton" TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
+        <Setter Property="Height" Value="36"/>
+        <Setter Property="MinWidth" Value="100"/>
+        <Setter Property="Margin" Value="4"/>
+        <Setter Property="materialDesign:ButtonAssist.CornerRadius" Value="6"/>
+        <Setter Property="materialDesign:ShadowAssist.ShadowDepth" Value="Depth2"/>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="materialDesign:ShadowAssist.ShadowDepth" Value="Depth3"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="SecondaryActionButton" TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+        <Setter Property="Height" Value="36"/>
+        <Setter Property="MinWidth" Value="100"/>
+        <Setter Property="Margin" Value="4"/>
+        <Setter Property="materialDesign:ButtonAssist.CornerRadius" Value="6"/>
+    </Style>
+
+    <!-- Enhanced Card Style -->
+    <Style x:Key="ModernCard" TargetType="materialDesign:Card">
+        <Setter Property="materialDesign:ShadowAssist.ShadowDepth" Value="Depth2"/>
+        <Setter Property="Margin" Value="8"/>
+        <Setter Property="Padding" Value="16"/>
+        <Setter Property="materialDesign:CardAssist.ClipContent" Value="True"/>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="materialDesign:ShadowAssist.ShadowDepth" Value="Depth3"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Performance Metrics Display -->
+    <Style x:Key="MetricLabelStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Foreground" Value="{DynamicResource MaterialDesignBodyLight}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <Style x:Key="MetricValueStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{DynamicResource MaterialDesignBody}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <!-- Enhanced ComboBox Style -->
+    <Style x:Key="ModernComboBox" TargetType="ComboBox" BasedOn="{StaticResource MaterialDesignFloatingHintComboBox}">
+        <Setter Property="Height" Value="40"/>
+        <Setter Property="Margin" Value="0,4"/>
+        <Setter Property="materialDesign:HintAssist.FloatingScale" Value="0.8"/>
+        <Setter Property="materialDesign:TextFieldAssist.HasClearButton" Value="True"/>
+    </Style>
+
+    <!-- Loading Animation -->
+    <Style x:Key="LoadingSpinner" TargetType="materialDesign:PackIcon">
+        <Setter Property="Kind" Value="Loading"/>
+        <Setter Property="Width" Value="24"/>
+        <Setter Property="Height" Value="24"/>
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryHueMidBrush}"/>
+        <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsVisible, RelativeSource={RelativeSource Self}}" Value="True">
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard>
+                        <Storyboard RepeatBehavior="Forever">
+                            <DoubleAnimation Storyboard.TargetProperty="RenderTransform.(RotateTransform.Angle)"
+                                           To="360" Duration="0:0:1" />
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+            </DataTrigger>
+        </Style.Triggers>
+        <Setter Property="RenderTransform">
+            <Setter.Value>
+                <RotateTransform/>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Progress Bar Enhancement -->
+    <Style x:Key="ModernProgressBar" TargetType="ProgressBar" BasedOn="{StaticResource MaterialDesignLinearProgressBar}">
+        <Setter Property="Height" Value="6"/>
+        <Setter Property="Margin" Value="0,8"/>
+        <Setter Property="materialDesign:TransitionAssist.DisableTransitions" Value="False"/>
+    </Style>
+
+    <!-- Data Grid Enhancements -->
+    <Style x:Key="ModernDataGrid" TargetType="DataGrid" BasedOn="{StaticResource MaterialDesignDataGrid}">
+        <Setter Property="AutoGenerateColumns" Value="False"/>
+        <Setter Property="CanUserAddRows" Value="False"/>
+        <Setter Property="CanUserDeleteRows" Value="False"/>
+        <Setter Property="IsReadOnly" Value="True"/>
+        <Setter Property="SelectionMode" Value="Single"/>
+        <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+        <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource MaterialDesignDivider}"/>
+        <Setter Property="materialDesign:DataGridAssist.CellPadding" Value="8,4"/>
+        <Setter Property="materialDesign:DataGridAssist.ColumnHeaderPadding" Value="8,8"/>
+    </Style>
+
+    <!-- Status Icon Styles -->
+    <Style x:Key="SuccessIcon" TargetType="materialDesign:PackIcon">
+        <Setter Property="Kind" Value="CheckCircle"/>
+        <Setter Property="Foreground" Value="#4CAF50"/>
+        <Setter Property="Width" Value="16"/>
+        <Setter Property="Height" Value="16"/>
+    </Style>
+
+    <Style x:Key="WarningIcon" TargetType="materialDesign:PackIcon">
+        <Setter Property="Kind" Value="AlertCircle"/>
+        <Setter Property="Foreground" Value="#FF9800"/>
+        <Setter Property="Width" Value="16"/>
+        <Setter Property="Height" Value="16"/>
+    </Style>
+
+    <Style x:Key="ErrorIcon" TargetType="materialDesign:PackIcon">
+        <Setter Property="Kind" Value="CloseCircle"/>
+        <Setter Property="Foreground" Value="#F44336"/>
+        <Setter Property="Width" Value="16"/>
+        <Setter Property="Height" Value="16"/>
+    </Style>
+
+    <!-- Tooltip Enhancement -->
+    <Style TargetType="ToolTip" BasedOn="{StaticResource MaterialDesignToolTip}">
+        <Setter Property="Placement" Value="Top"/>
+        <Setter Property="HasDropShadow" Value="True"/>
+        <Setter Property="materialDesign:ShadowAssist.ShadowDepth" Value="Depth2"/>
+    </Style>
+
+    <!-- Transition Effects -->
+    <Style x:Key="FadeInAnimation" TargetType="FrameworkElement">
+        <Style.Triggers>
+            <Trigger Property="IsVisible" Value="True">
+                <Trigger.EnterActions>
+                    <BeginStoryboard>
+                        <Storyboard>
+                            <DoubleAnimation Storyboard.TargetProperty="Opacity" 
+                                           From="0" To="1" Duration="0:0:0.3"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </Trigger.EnterActions>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+</ResourceDictionary>

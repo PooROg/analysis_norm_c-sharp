@@ -1,0 +1,69 @@
+<!-- App.xaml - ИСПРАВЛЕН для Этапа 1: убраны ссылки на несуществующие конверторы -->
+<Application x:Class="AnalysisNorm.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             StartupUri="MainWindow.xaml">
+    
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Material Design -->
+                <materialDesign:BundledTheme BaseTheme="Light" 
+                                           PrimaryColor="DeepPurple" 
+                                           SecondaryColor="Lime" />
+                <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.Defaults.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.Light.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- ВРЕМЕННО ОТКЛЮЧЕНЫ: Value Converters до создания Converters namespace -->
+            <!-- ЭТАП 2: Будут добавлены после создания пространства имен AnalysisNorm.Converters -->
+            <!--
+            <converters:ProcessingStepStatusToIconConverter x:Key="ProcessingStepStatusToIconConverter" />
+            <converters:ProcessingStepStatusToColorConverter x:Key="ProcessingStepStatusToColorConverter" />
+            <converters:DiagnosticAlertLevelToIconConverter x:Key="DiagnosticAlertLevelToIconConverter" />
+            <converters:DiagnosticAlertLevelToColorConverter x:Key="DiagnosticAlertLevelToColorConverter" />
+            -->
+
+            <!-- Базовые стили для кнопок без Material Design зависимостей -->
+            <Style TargetType="Button">
+                <Setter Property="Margin" Value="4"/>
+                <Setter Property="Height" Value="36"/>
+                <Setter Property="Background" Value="#FF6750A4"/>
+                <Setter Property="Foreground" Value="White"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Padding" Value="16,8"/>
+                <Setter Property="Cursor" Value="Hand"/>
+            </Style>
+
+            <Style TargetType="TextBox">
+                <Setter Property="Margin" Value="4"/>
+                <Setter Property="Height" Value="32"/>
+                <Setter Property="Padding" Value="8,4"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="BorderBrush" Value="#FFCCCCCC"/>
+            </Style>
+
+            <Style TargetType="ComboBox">
+                <Setter Property="Margin" Value="4"/>
+                <Setter Property="Height" Value="32"/>
+                <Setter Property="Padding" Value="8,4"/>
+            </Style>
+
+            <!-- Дополнительные базовые стили -->
+            <Style x:Key="HeaderTextStyle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="16"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Margin" Value="4,8,4,4"/>
+                <Setter Property="Foreground" Value="{DynamicResource PrimaryHueMidBrush}"/>
+            </Style>
+
+            <Style x:Key="StatusTextStyle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="Margin" Value="4,2"/>
+                <Setter Property="Foreground" Value="{DynamicResource MaterialDesignBodyLight}"/>
+            </Style>
+
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
