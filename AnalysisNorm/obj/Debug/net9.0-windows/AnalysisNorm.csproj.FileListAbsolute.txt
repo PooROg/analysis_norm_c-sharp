@@ -1,5 +1,0 @@
-C:\Users\Admin\Desktop\2 Анализ норм GUI\AnalysisNorm\obj\Debug\net9.0-windows\AnalysisNorm.csproj.AssemblyReference.cache
-C:\Users\Admin\Desktop\2 Анализ норм GUI\AnalysisNorm\obj\Debug\net9.0-windows\AnalysisNorm.GeneratedMSBuildEditorConfig.editorconfig
-C:\Users\Admin\Desktop\2 Анализ норм GUI\AnalysisNorm\obj\Debug\net9.0-windows\AnalysisNorm.AssemblyInfoInputs.cache
-C:\Users\Admin\Desktop\2 Анализ норм GUI\AnalysisNorm\obj\Debug\net9.0-windows\AnalysisNorm.AssemblyInfo.cs
-C:\Users\Admin\Desktop\2 Анализ норм GUI\AnalysisNorm\obj\Debug\net9.0-windows\AnalysisNorm.csproj.CoreCompileInputs.cache
