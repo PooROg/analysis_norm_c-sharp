@@ -1,7 +1,7 @@
 // Analysis/PlotBuilder.cs
 // Построение интерактивных графиков анализа норм
 // Мигрировано из: analysis/visualization.py
-// ЧАТ 4: Базовая версия с ScottPlot (вместо Plotly)
+// ЧАТ 4: Базовая версия с ScottPlot 5.x (ИСПРАВЛЕНО)
 
 using System;
 using System.Collections.Generic;
@@ -17,7 +17,7 @@ namespace AnalysisNorm.Analysis
     /// Построитель графиков для анализа норм
     /// Python: class PlotBuilder, visualization.py
     /// 
-    /// ВАЖНО: Вместо Plotly используем ScottPlot
+    /// ВАЖНО: Используем ScottPlot 5.x API
     /// Упрощения для Чата 4:
     /// - Базовый двухпанельный график
     /// - Стандартная интерактивность ScottPlot
@@ -57,42 +57,37 @@ namespace AnalysisNorm.Analysis
             string? specificNormId = null,
             bool singleSectionOnly = false)
         {
-            Log.Information("Создание графика для участка {Section}", sectionName);
-
             try
             {
-                // Создаем основной plot
-                var plt = new Plot();
+                Log.Debug("Создание графика для участка: {Section}", sectionName);
+
+                // Создаем новый Plot (ScottPlot 5.x)
+                var plot = new Plot();
 
                 // Заголовок
                 string title = BuildPlotTitle(sectionName, specificNormId, singleSectionOnly);
-                plt.Title(title);
-                plt.XLabel("Нагрузка на ось (тонн)");
-                plt.YLabel("Удельный расход (кВт·ч/1000 ткм брутто)");
+                plot.Title(title);
+
+                // ИСПРАВЛЕНО: ScottPlot 5.x - настройка осей
+                plot.Axes.Bottom.Label.Text = "ОСЭС (тыс. тонно-км брутто)";
+                plot.Axes.Left.Label.Text = "Расход (кг)";
 
                 // Добавляем кривые норм
-                AddNormCurves(plt, normFunctions, analyzedData);
+                AddNormCurves(plot, analyzedData, normFunctions, specificNormId);
 
                 // Добавляем точки маршрутов
-                AddRoutePoints(plt, analyzedData);
+                AddRoutePoints(plot, analyzedData);
 
-                // Настройка легенды
-                plt.Legend(location: Alignment.UpperRight);
+                // Автоматическое масштабирование
+                plot.Axes.AutoScale();
 
-                // Включение интерактивности
-                plt.Grid(enable: true);
-
-                Log.Information("График создан: {Count} точек", analyzedData.Rows.Count);
-                return plt;
+                Log.Information("График создан успешно");
+                return plot;
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "Ошибка создания графика для участка {Section}", sectionName);
-                
-                // Возвращаем пустой график с сообщением об ошибке
-                var errorPlot = new Plot();
-                errorPlot.Title($"Ошибка: {ex.Message}");
-                return errorPlot;
+                Log.Error(ex, "Ошибка создания графика");
+                throw;
             }
         }
 
@@ -102,20 +97,20 @@ namespace AnalysisNorm.Analysis
 
         /// <summary>
         /// Строит заголовок графика
-        /// Python: часть create_interactive_plot(), visualization.py
+        /// Python: часть create_interactive_plot(), visualization.py, line 50
         /// </summary>
-        private string BuildPlotTitle(string sectionName, string? normId, bool singleSectionOnly)
+        private string BuildPlotTitle(string sectionName, string? specificNormId, bool singleSectionOnly)
         {
-            string title = $"Участок: {sectionName}";
+            string title = $"Анализ норм для участка: {sectionName}";
 
-            if (!string.IsNullOrEmpty(normId))
+            if (!string.IsNullOrEmpty(specificNormId))
             {
-                title += $" | Норма: {normId}";
+                title += $" (Норма: {specificNormId})";
             }
 
             if (singleSectionOnly)
             {
-                title += " | Только один участок";
+                title += " [Только один участок]";
             }
 
             return title;
@@ -127,127 +122,66 @@ namespace AnalysisNorm.Analysis
 
         /// <summary>
         /// Добавляет кривые норм на график
-        /// Python: часть создания traces для норм, visualization.py
+        /// Python: создание traces для норм, visualization.py, line 80
         /// </summary>
         private void AddNormCurves(
-            Plot plt,
+            Plot plot,
+            DataFrame analyzedData,
             Dictionary<string, Func<double, double>> normFunctions,
-            DataFrame analyzedData)
+            string? specificNormId)
         {
-            Log.Debug("Добавление {Count} кривых норм", normFunctions.Count);
-
-            // Определяем диапазон осей из данных
-            var (minOses, maxOses) = GetOsesRange(analyzedData);
-
-            if (minOses >= maxOses)
+            if (normFunctions == null || normFunctions.Count == 0)
             {
-                Log.Warning("Некорректный диапазон осей: [{Min}, {Max}]", minOses, maxOses);
+                Log.Warning("Нет функций норм для отображения");
                 return;
             }
 
-            // Расширяем диапазон на 10% с каждой стороны
-            double range = maxOses - minOses;
-            minOses -= range * 0.1;
-            maxOses += range * 0.1;
+            // Определяем диапазон ОСЭС
+            var osesColumn = analyzedData.Columns["ОСЭС"];
+            double minOses = osesColumn.Cast<double>().Min();
+            double maxOses = osesColumn.Cast<double>().Max();
 
-            // Создаем массив точек для кривых
-            int numPoints = 100;
-            double[] osesArray = new double[numPoints];
-            for (int i = 0; i < numPoints; i++)
+            // Генерируем 100 точек для плавной кривой
+            double[] osesArray = new double[100];
+            for (int i = 0; i < 100; i++)
             {
-                osesArray[i] = minOses + (maxOses - minOses) * i / (numPoints - 1);
+                osesArray[i] = minOses + (maxOses - minOses) * i / 99;
             }
 
-            // Добавляем кривую для каждой нормы
-            int normIndex = 0;
-            foreach (var (normId, normFunc) in normFunctions)
+            // Цвета для разных норм
+            Color[] colors = { Color.Blue, Color.Purple, Color.Magenta, Color.Cyan };
+            int colorIndex = 0;
+
+            // Для каждой нормы
+            foreach (var kvp in normFunctions)
             {
-                try
+                string normId = kvp.Key;
+                Func<double, double> normFunc = kvp.Value;
+
+                // Фильтр по конкретной норме
+                if (!string.IsNullOrEmpty(specificNormId) && normId != specificNormId)
                 {
-                    // Вычисляем значения нормы
-                    double[] normValues = new double[numPoints];
-                    for (int i = 0; i < numPoints; i++)
-                    {
-                        normValues[i] = normFunc(osesArray[i]);
-                    }
-
-                    // Выбираем цвет (циклически)
-                    Color lineColor = GetNormColor(normIndex);
-
-                    // Добавляем линию
-                    var signal = plt.AddScatter(osesArray, normValues, lineColor, lineWidth: LineWidth);
-                    signal.Label = $"Норма {normId}";
-                    signal.MarkerSize = 0;  // Только линия, без маркеров
-
-                    normIndex++;
-                    Log.Debug("Кривая нормы {NormId} добавлена", normId);
+                    continue;
                 }
-                catch (Exception ex)
+
+                // Вычисляем значения нормы
+                double[] normValues = new double[100];
+                for (int i = 0; i < 100; i++)
                 {
-                    Log.Warning(ex, "Ошибка добавления кривой нормы {NormId}", normId);
+                    normValues[i] = normFunc(osesArray[i]);
                 }
+
+                // ИСПРАВЛЕНО: ScottPlot 5.x API
+                Color lineColor = colors[colorIndex % colors.Length];
+                var scatter = plot.Add.Scatter(osesArray, normValues);
+                scatter.Color = lineColor;
+                scatter.LineWidth = LineWidth;
+                scatter.LegendText = $"Норма: {normId}";
+
+                colorIndex++;
             }
-        }
 
-        /// <summary>
-        /// Возвращает диапазон значений осей из данных
-        /// </summary>
-        private (double Min, double Max) GetOsesRange(DataFrame data)
-        {
-            try
-            {
-                var osesCol = data.Columns["ОСИ"];
-                double min = double.MaxValue;
-                double max = double.MinValue;
-
-                for (long i = 0; i < data.Rows.Count; i++)
-                {
-                    var osesValue = osesCol[i];
-                    if (osesValue == null)
-                        continue;
-
-                    double oses;
-                    if (osesValue is double d)
-                        oses = d;
-                    else if (!double.TryParse(osesValue.ToString(), out oses))
-                        continue;
-
-                    if (oses < min) min = oses;
-                    if (oses > max) max = oses;
-                }
-
-                if (min == double.MaxValue || max == double.MinValue)
-                {
-                    // Возвращаем дефолтный диапазон
-                    return (10.0, 30.0);
-                }
-
-                return (min, max);
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "Ошибка определения диапазона осей");
-                return (10.0, 30.0);
-            }
-        }
-
-        /// <summary>
-        /// Возвращает цвет для кривой нормы
-        /// </summary>
-        private Color GetNormColor(int index)
-        {
-            // Палитра цветов для кривых норм
-            Color[] palette = new[]
-            {
-                Color.Blue,
-                Color.Purple,
-                Color.DarkCyan,
-                Color.DarkOrange,
-                Color.Brown,
-                Color.DarkGreen
-            };
-
-            return palette[index % palette.Length];
+            Log.Debug("Добавлено {Count} кривых норм", colorIndex);
         }
 
         #endregion
@@ -255,49 +189,51 @@ namespace AnalysisNorm.Analysis
         #region Добавление точек маршрутов
 
         /// <summary>
-        /// Добавляет точки маршрутов на график
-        /// Python: часть создания scatter traces, visualization.py
+        /// Добавляет точки маршрутов на график с цветовым кодированием по статусу
+        /// Python: создание scatter traces, visualization.py, line 120
         /// </summary>
-        private void AddRoutePoints(Plot plt, DataFrame data)
+        private void AddRoutePoints(Plot plot, DataFrame analyzedData)
         {
-            Log.Debug("Добавление точек маршрутов: {Count}", data.Rows.Count);
+            // Группируем точки по статусу
+            var groupedPoints = GroupPointsByStatus(analyzedData);
 
-            try
+            foreach (var group in groupedPoints)
             {
-                // Группируем точки по статусам
-                var pointsByStatus = GroupPointsByStatus(data);
+                string status = group.Key;
+                List<RoutePoint> points = group.Value;
 
-                // Добавляем точки для каждого статуса
-                foreach (var (status, points) in pointsByStatus)
+                if (points.Count == 0)
                 {
-                    if (points.Count == 0)
-                        continue;
-
-                    // Получаем цвет для статуса
-                    Color color = GetStatusColor(status);
-
-                    // Преобразуем в массивы
-                    double[] x = points.Select(p => p.Oses).ToArray();
-                    double[] y = points.Select(p => p.FactUd).ToArray();
-
-                    // Добавляем scatter
-                    var scatter = plt.AddScatter(x, y, color, markerSize: MarkerSize);
-                    scatter.Label = $"{status} ({points.Count})";
-                    scatter.LineWidth = 0;  // Только маркеры, без линий
-
-                    Log.Debug("Добавлено {Count} точек со статусом {Status}", points.Count, status);
+                    continue;
                 }
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "Ошибка добавления точек маршрутов");
+
+                // Извлекаем координаты
+                double[] xData = points.Select(p => p.Oses).ToArray();
+                double[] yData = points.Select(p => p.Rashod).ToArray();
+
+                // Определяем цвет по статусу
+                Color color = GetStatusColor(status);
+
+                // ИСПРАВЛЕНО: ScottPlot 5.x API
+                var scatter = plot.Add.Scatter(xData, yData);
+                scatter.Color = color;
+                scatter.MarkerSize = MarkerSize;
+                scatter.LineWidth = 0; // Только точки, без линий
+                scatter.LegendText = $"{status} ({points.Count} точек)";
+
+                Log.Debug("Добавлено {Count} точек со статусом '{Status}'", points.Count, status);
             }
         }
 
+        #endregion
+
+        #region Группировка точек по статусу
+
         /// <summary>
-        /// Группирует точки по статусам
+        /// Группирует точки маршрутов по статусу
+        /// Python: группировка через groupby, visualization.py, line 140
         /// </summary>
-        private Dictionary<string, List<RoutePoint>> GroupPointsByStatus(DataFrame data)
+        private Dictionary<string, List<RoutePoint>> GroupPointsByStatus(DataFrame analyzedData)
         {
             var groups = new Dictionary<string, List<RoutePoint>>
             {
@@ -306,63 +242,49 @@ namespace AnalysisNorm.Analysis
                 ["Перерасход"] = new List<RoutePoint>()
             };
 
-            try
+            // ИСПРАВЛЕНО: Явное приведение long -> int
+            int rowCount = (int)analyzedData.Rows.Count;
+
+            for (int i = 0; i < rowCount; i++)
             {
-                var osesCol = data.Columns["ОСИ"];
-                var factUdCol = data.Columns["Факт уд"];
-                var statusCol = data.Columns["Статус"];
-                var routeNumCol = data.Columns["Маршрут №"];
-                var tripDateCol = data.Columns["Дата поездки"];
-
-                for (long i = 0; i < data.Rows.Count; i++)
+                try
                 {
-                    // Извлекаем значения
-                    var osesValue = osesCol[i];
-                    var factUdValue = factUdCol[i];
-                    var status = statusCol[i]?.ToString() ?? "Норма";
+                    var status = analyzedData["Статус"][i]?.ToString() ?? "Норма";
+                    var oses = Convert.ToDouble(analyzedData["ОСЭС"][i]);
+                    var rashod = Convert.ToDouble(analyzedData["Расход"][i]);
 
-                    if (osesValue == null || factUdValue == null)
-                        continue;
-
-                    // Парсим числа
-                    if (!double.TryParse(osesValue.ToString(), out double oses))
-                        continue;
-                    if (!double.TryParse(factUdValue.ToString(), out double factUd))
-                        continue;
-
-                    // Создаем точку
                     var point = new RoutePoint
                     {
                         Oses = oses,
-                        FactUd = factUd,
-                        Status = status,
-                        RouteNumber = routeNumCol[i]?.ToString() ?? "N/A",
-                        TripDate = tripDateCol[i]?.ToString() ?? "N/A"
+                        Rashod = rashod,
+                        Status = status
                     };
 
-                    // Добавляем в группу
                     if (groups.ContainsKey(status))
                     {
                         groups[status].Add(point);
                     }
                     else
                     {
-                        // Неизвестный статус → в "Норма"
                         groups["Норма"].Add(point);
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "Ошибка группировки точек по статусам");
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "Ошибка обработки строки {Row}", i);
+                }
             }
 
             return groups;
         }
 
+        #endregion
+
+        #region Вспомогательные методы
+
         /// <summary>
         /// Возвращает цвет для статуса
-        /// Python: STATUS_COLORS, visualization.py
+        /// Python: STATUS_COLORS, visualization.py, line 30
         /// </summary>
         private Color GetStatusColor(string status)
         {
@@ -379,15 +301,13 @@ namespace AnalysisNorm.Analysis
         #region Вспомогательные классы
 
         /// <summary>
-        /// Точка маршрута для графика
+        /// Точка маршрута для построения графика
         /// </summary>
         private class RoutePoint
         {
             public double Oses { get; set; }
-            public double FactUd { get; set; }
+            public double Rashod { get; set; }
             public string Status { get; set; } = string.Empty;
-            public string RouteNumber { get; set; } = string.Empty;
-            public string TripDate { get; set; } = string.Empty;
         }
 
         #endregion

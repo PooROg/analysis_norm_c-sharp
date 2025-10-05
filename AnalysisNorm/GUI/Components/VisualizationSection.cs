@@ -1,12 +1,13 @@
 // GUI/Components/VisualizationSection.cs
 // Секция визуализации графиков
 // Мигрировано из: gui/interface.py (часть с графиком)
-// ЧАТ 4: Базовая интеграция ScottPlot
+// ЧАТ 4: Базовая интеграция ScottPlot 5.x (ИСПРАВЛЕНО)
 
 using System;
 using System.Drawing;
 using System.Windows.Forms;
 using ScottPlot;
+using ScottPlot.WinForms; // ИСПРАВЛЕНО: Добавлен using для FormsPlot
 using Serilog;
 
 namespace AnalysisNorm.GUI.Components
@@ -24,7 +25,7 @@ namespace AnalysisNorm.GUI.Components
     {
         #region Поля
 
-        private ScottPlot.FormsPlot _formsPlot;
+        private FormsPlot _formsPlot; // ИСПРАВЛЕНО: Теперь ScottPlot.WinForms.FormsPlot
         private TextBox _statisticsTextBox;
         private Button _exportButton;
         private Button _infoButton;
@@ -46,8 +47,8 @@ namespace AnalysisNorm.GUI.Components
 
         private void InitializeComponents()
         {
-            // FormsPlot - основной контрол для графика
-            _formsPlot = new ScottPlot.FormsPlot
+            // ИСПРАВЛЕНО: FormsPlot из ScottPlot.WinForms
+            _formsPlot = new FormsPlot
             {
                 Dock = DockStyle.Fill
             };
@@ -84,40 +85,37 @@ namespace AnalysisNorm.GUI.Components
             _infoButton.Click += InfoButton_Click;
         }
 
-        #endregion
-
-        #region Размещение компонентов
-
         private void SetupLayout()
         {
             // Панель для кнопок
             var buttonPanel = new FlowLayoutPanel
             {
-                Dock = DockStyle.Bottom,
+                Dock = DockStyle.Top,
                 Height = 40,
                 FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = false,
                 Padding = new Padding(5)
             };
+
             buttonPanel.Controls.Add(_exportButton);
             buttonPanel.Controls.Add(_infoButton);
 
-            // Панель для статистики
-            var statsPanel = new Panel
+            // Основной layout
+            var mainLayout = new TableLayoutPanel
             {
-                Dock = DockStyle.Bottom,
-                Height = 130,
-                Padding = new Padding(5)
+                Dock = DockStyle.Fill,
+                RowCount = 3,
+                ColumnCount = 1
             };
-            statsPanel.Controls.Add(_statisticsTextBox);
-            _statisticsTextBox.Dock = DockStyle.Fill;
 
-            // Добавляем компоненты
-            this.Controls.Add(_formsPlot);      // График занимает оставшееся место
-            this.Controls.Add(statsPanel);      // Статистика внизу
-            this.Controls.Add(buttonPanel);     // Кнопки самые внизу
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));  // Кнопки
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));  // График
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 120)); // Статистика
 
-            // Порядок важен! Dock работает от последнего к первому
+            mainLayout.Controls.Add(buttonPanel, 0, 0);
+            mainLayout.Controls.Add(_formsPlot, 0, 1);
+            mainLayout.Controls.Add(_statisticsTextBox, 0, 2);
+
+            Controls.Add(mainLayout);
         }
 
         #endregion
@@ -125,97 +123,88 @@ namespace AnalysisNorm.GUI.Components
         #region Публичные методы
 
         /// <summary>
-        /// Отображает график на FormsPlot контроле
+        /// Отображает график
+        /// Python: обновление plot_widget, interface.py
         /// </summary>
         public void DisplayPlot(Plot plot)
         {
-            if (plot == null)
-            {
-                Log.Warning("Попытка отобразить null график");
-                return;
-            }
-
             try
             {
-                // Очищаем текущий график
+                // ИСПРАВЛЕНО: ScottPlot 5.x - используем Reset() и Replace()
                 _formsPlot.Reset();
-
-                // Копируем содержимое из созданного Plot
-                _formsPlot.Plot.Clear();
                 
-                // Копируем все plottables
+                // Копируем все элементы из переданного Plot
                 foreach (var plottable in plot.GetPlottables())
                 {
                     _formsPlot.Plot.Add(plottable);
                 }
 
-                // Копируем настройки
-                _formsPlot.Plot.Title(plot.Title());
-                _formsPlot.Plot.XLabel(plot.XAxis.Label.Text);
-                _formsPlot.Plot.YLabel(plot.YAxis.Label.Text);
+                // Копируем настройки осей
+                _formsPlot.Plot.Title(plot.GetTitle());
+                
+                // ИСПРАВЛЕНО: ScottPlot 5.x API для настройки осей
+                _formsPlot.Plot.Axes.Bottom.Label.Text = plot.Axes.Bottom.Label.Text;
+                _formsPlot.Plot.Axes.Left.Label.Text = plot.Axes.Left.Label.Text;
 
-                // Автомасштабирование
-                _formsPlot.Plot.AxisAuto();
-
-                // Обновление отображения
+                // Автомасштабирование и обновление
+                _formsPlot.Plot.Axes.AutoScale();
                 _formsPlot.Refresh();
 
                 // Активируем кнопки
                 _exportButton.Enabled = true;
                 _infoButton.Enabled = true;
 
-                Log.Information("График отображен на FormsPlot");
+                Log.Information("График отображен успешно");
             }
             catch (Exception ex)
             {
                 Log.Error(ex, "Ошибка отображения графика");
-                MessageBox.Show($"Ошибка отображения графика: {ex.Message}", 
+                MessageBox.Show($"Ошибка отображения графика: {ex.Message}",
                     "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
         /// <summary>
         /// Отображает статистику анализа
+        /// Python: обновление stats_text, interface.py
         /// </summary>
-        public void DisplayStatistics(System.Collections.Generic.Dictionary<string, object>? statistics)
+        public void DisplayStatistics(Dictionary<string, object> statistics)
         {
-            if (statistics == null || statistics.Count == 0)
-            {
-                _statisticsTextBox.Text = "Статистика недоступна";
-                return;
-            }
-
             try
             {
-                var text = "=== СТАТИСТИКА АНАЛИЗА ===" + Environment.NewLine + Environment.NewLine;
+                var lines = new List<string>();
 
-                foreach (var (key, value) in statistics)
+                foreach (var kvp in statistics)
                 {
-                    if (value is System.Collections.Generic.Dictionary<string, int> dict)
+                    string key = kvp.Key;
+                    object value = kvp.Value;
+
+                    // Форматирование значения
+                    string formattedValue;
+                    if (value is double d)
                     {
-                        text += $"{key}:" + Environment.NewLine;
-                        foreach (var (subKey, subValue) in dict)
-                        {
-                            text += $"  {subKey}: {subValue}" + Environment.NewLine;
-                        }
+                        formattedValue = d.ToString("F2");
                     }
-                    else if (value is double doubleValue)
+                    else if (value is int i)
                     {
-                        text += $"{key}: {doubleValue:F2}" + Environment.NewLine;
+                        formattedValue = i.ToString();
                     }
                     else
                     {
-                        text += $"{key}: {value}" + Environment.NewLine;
+                        formattedValue = value?.ToString() ?? "N/A";
                     }
+
+                    lines.Add($"{key}: {formattedValue}");
                 }
 
-                _statisticsTextBox.Text = text;
+                _statisticsTextBox.Text = string.Join(Environment.NewLine, lines);
+
                 Log.Debug("Статистика отображена");
             }
             catch (Exception ex)
             {
                 Log.Error(ex, "Ошибка отображения статистики");
-                _statisticsTextBox.Text = "Ошибка отображения статистики";
+                _statisticsTextBox.Text = $"Ошибка: {ex.Message}";
             }
         }
 
@@ -225,10 +214,12 @@ namespace AnalysisNorm.GUI.Components
         public void Clear()
         {
             _formsPlot.Reset();
+            _formsPlot.Refresh();
             _statisticsTextBox.Clear();
             _exportButton.Enabled = false;
             _infoButton.Enabled = false;
-            Log.Debug("VisualizationSection очищена");
+
+            Log.Debug("VisualizationSection очищен");
         }
 
         #endregion
@@ -250,8 +241,8 @@ namespace AnalysisNorm.GUI.Components
 
                 if (saveDialog.ShowDialog() == DialogResult.OK)
                 {
-                    // Сохраняем график
-                    _formsPlot.Plot.SaveFig(saveDialog.FileName, width: 1920, height: 1080);
+                    // ИСПРАВЛЕНО: ScottPlot 5.x API для сохранения
+                    _formsPlot.Plot.SavePng(saveDialog.FileName, 1920, 1080);
 
                     MessageBox.Show($"График сохранен: {saveDialog.FileName}",
                         "Экспорт завершен", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -283,7 +274,7 @@ namespace AnalysisNorm.GUI.Components
         /// <summary>
         /// Возвращает текущий FormsPlot контрол (для расширенного доступа)
         /// </summary>
-        public ScottPlot.FormsPlot GetFormsPlot()
+        public FormsPlot GetFormsPlot()
         {
             return _formsPlot;
         }

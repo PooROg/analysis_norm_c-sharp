@@ -75,6 +75,14 @@ namespace AnalysisNorm.GUI
         /// </summary>
         private void InitializeComponents()
         {
+            // Инициализация логики (Чат 2, 3, 4)
+            _normStorage = new NormStorage();
+            _routeProcessor = new RouteProcessor();
+            _normProcessor = new NormProcessor(_normStorage); // ИСПРАВЛЕНО: передаем _normStorage
+            _analyzer = new InteractiveAnalyzer();
+            _plotBuilder = new PlotBuilder();
+            _analyzer.SetPlotBuilder(_plotBuilder);
+
             // GUI компоненты
             _fileSection = new FileSection();
             _controlSection = new ControlSection();
@@ -83,7 +91,7 @@ namespace AnalysisNorm.GUI
             // Бэкенд (из Чата 3)
             _normStorage = new NormStorage();
             _routeProcessor = new RouteProcessor();
-            _normProcessor = new NormProcessor();
+            _normProcessor = new NormProcessor(_normStorage);
 
             // ЧАТ 4: Анализаторы
             _analyzer = new InteractiveAnalyzer();
