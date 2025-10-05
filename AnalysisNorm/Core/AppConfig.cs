@@ -103,6 +103,23 @@ namespace AnalysisNorm.Core
             }
         }
 
+        /// <summary>
+        /// Версия приложения
+        /// Python: VERSION = "1.0.0"
+        /// </summary>
+        public static string Version => "1.0.0-alpha";
+
+        /// <summary>
+        /// Имя приложения
+        /// </summary>
+        public static string ApplicationName => "Analysis Norm C#";
+
+        /// <summary>
+        /// Полное описание приложения
+        /// </summary>
+        public static string ApplicationFullName => 
+            $"{ApplicationName} v{Version} (.NET 9.0)";
+
         #endregion
     }
 }

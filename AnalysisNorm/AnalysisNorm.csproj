@@ -9,12 +9,18 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Пакеты из Чата 2 -->
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="Serilog" Version="3.1.1" />
     <PackageReference Include="Serilog.Sinks.Console" Version="5.0.1" />
     <PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
     <PackageReference Include="MathNet.Numerics" Version="5.0.0" />
     <PackageReference Include="ClosedXML" Version="0.102.1" />
+    
+    <!-- Пакеты из Чата 3 - ДОБАВЛЕНЫ -->
+    <PackageReference Include="HtmlAgilityPack" Version="1.11.54" />
+    <PackageReference Include="Microsoft.Data.Analysis" Version="0.21.0" />
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
   </ItemGroup>
 
 </Project>

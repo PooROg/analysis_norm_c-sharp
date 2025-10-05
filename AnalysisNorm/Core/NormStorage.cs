@@ -522,6 +522,61 @@ namespace AnalysisNorm.Core
             return SearchNorms(normType: normType);
         }
 
+        /// <summary>
+        /// Добавляет или обновляет одну норму (упрощенный метод)
+        /// Используется NormProcessor для добавления норм из HTML
+        /// </summary>
+        /// <param name="normId">Идентификатор нормы</param>
+        /// <param name="points">Список точек (Load, Norm)</param>
+        /// <returns>Статус операции: "new", "updated", "unchanged"</returns>
+        public string AddOrUpdateNorm(string normId, List<(double Load, double Norm)> points)
+        {
+            Log.Debug($"AddOrUpdateNorm: {normId}, точек: {points.Count}");
+
+            // Конвертируем точки в NormPoint
+            var normPoints = points.Select(p => new NormPoint(p.Load, p.Norm)).ToList();
+
+            // Создаем NormData
+            var normData = new NormData
+            {
+                Points = normPoints,
+                NormType = "Unknown", // TODO: определять тип из контекста
+                Description = $"Норма {normId}",
+                BaseData = new Dictionary<string, object>
+                {
+                    { "norm_id", normId },
+                    { "points_count", points.Count }
+                }
+            };
+
+            // Используем множественный метод для добавления
+            var results = AddOrUpdateNorms(new Dictionary<string, NormData>
+            {
+                { normId, normData }
+            });
+
+            return results.TryGetValue(normId, out string status) ? status : "error";
+        }
+
+        /// <summary>
+        /// Получает список всех ID норм
+        /// Используется для заполнения выпадающих списков в GUI
+        /// </summary>
+        public List<string> GetAllNormIds()
+        {
+            return _normsData.Keys.ToList();
+        }
+
+        /// <summary>
+        /// Сохраняет хранилище в файл (обертка без возвращаемого значения)
+        /// Вызывается после массового добавления норм
+        /// </summary>
+        public void SaveToFile()
+        {
+            SaveStorage();
+        }
+
+
         #endregion
 
         #region Валидация и статистика
@@ -715,4 +770,7 @@ namespace AnalysisNorm.Core
     }
 
     #endregion
+
 }
+
+

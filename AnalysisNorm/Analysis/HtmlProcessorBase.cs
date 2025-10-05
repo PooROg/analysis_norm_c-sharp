@@ -185,9 +185,9 @@ namespace AnalysisNorm.Analysis
         /// </summary>
         /// <param name="htmlContent">HTML контент</param>
         /// <returns>HtmlDocument</returns>
-        protected HtmlDocument LoadHtmlDocument(string htmlContent)
+        protected HtmlAgilityPack.HtmlDocument LoadHtmlDocument(string htmlContent)
         {
-            var doc = new HtmlDocument();
+            var doc = new HtmlAgilityPack.HtmlDocument();
             doc.LoadHtml(htmlContent);
             return doc;
         }
