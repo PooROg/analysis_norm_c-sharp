@@ -8,6 +8,9 @@
     <Compile Update="GUI\Components\FileSection.cs">
       <SubType>UserControl</SubType>
     </Compile>
+    <Compile Update="GUI\Components\VisualizationSection.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
     <Compile Update="GUI\MainWindow.cs">
       <SubType>Form</SubType>
     </Compile>

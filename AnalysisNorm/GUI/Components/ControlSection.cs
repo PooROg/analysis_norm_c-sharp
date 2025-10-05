@@ -383,5 +383,34 @@ namespace AnalysisNorm.GUI.Components
         }
 
         #endregion
+
+        /// <summary>
+        /// Возвращает выбранную норму (или null если не выбрана)
+        /// ЧАТ 4: Новый метод для интеграции с InteractiveAnalyzer
+        /// </summary>
+        public string? GetSelectedNorm()
+        {
+            if (_normComboBox.Enabled && _normComboBox.SelectedIndex >= 0)
+            {
+                return _normComboBox.SelectedItem?.ToString();
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Возвращает выбранный участок (или null если не выбран)
+        /// ЧАТ 4: Новый метод для дополнительной функциональности
+        /// </summary>
+        public string? GetSelectedSection()
+        {
+            if (_sectionComboBox.Enabled && _sectionComboBox.SelectedIndex >= 0)
+            {
+                return _sectionComboBox.SelectedItem?.ToString();
+            }
+
+            return null;
+        }
     }
+
 }

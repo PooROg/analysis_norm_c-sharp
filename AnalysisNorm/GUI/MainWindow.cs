@@ -1,57 +1,51 @@
 // GUI/MainWindow.cs
 // Главное окно приложения
-// Мигрировано из: gui/interface.py, class NormsAnalyzerGUI
-// ЧАТ 2: ИНТЕГРАЦИЯ FILESECTION ✅
-// ЧАТ 3: ИНТЕГРАЦИЯ ROUTEPROCESSOR, NORMPROCESSOR, CONTROLSECTION ✅
+// Мигрировано из: gui/interface.py
+// ЧАТ 4: Интеграция DataAnalyzer, InteractiveAnalyzer, PlotBuilder, VisualizationSection
 
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.IO;
-using System.Windows.Forms;
 using System.Threading.Tasks;
+using System.Windows.Forms;
+using Microsoft.Data.Analysis;
 using Serilog;
-using AnalysisNorm.GUI.Components;
-using AnalysisNorm.Core;
 using AnalysisNorm.Analysis;
+using AnalysisNorm.Core;
+using AnalysisNorm.GUI.Components;
 
 namespace AnalysisNorm.GUI
 {
     /// <summary>
     /// Главное окно приложения
-    /// Мигрировано из: gui/interface.py, class NormsAnalyzerGUI (lines 30-650)
-    /// 
-    /// ЧАТ 2 ИНТЕГРАЦИЯ:
-    /// - FileSection полностью интегрирован
-    /// - События подключены
-    /// 
-    /// ЧАТ 3 ИНТЕГРАЦИЯ:
-    /// - RouteProcessor для парсинга HTML маршрутов
-    /// - NormProcessor для парсинга HTML норм
-    /// - ControlSection для управления анализом
+    /// Python: class NormsAnalyzerGUI, gui/interface.py
     /// </summary>
     public partial class MainWindow : Form
     {
         #region Поля
 
-        private MenuStrip menuStrip;
-        private StatusStrip statusStrip;
-        private ToolStripStatusLabel statusLabel;
-
-        // ЧАТ 2: FileSection ✅
+        // Компоненты GUI
         private FileSection _fileSection;
-        
-        // ЧАТ 3: ControlSection ✅
         private ControlSection _controlSection;
-        
-        private Panel _visualSectionPanel; // TODO Чат 4
+        private VisualizationSection _visualizationSection;  // ЧАТ 4: Новый компонент
 
-        // ЧАТ 3: Процессоры ✅
+        // Панели для компонентов (из Чата 3)
+        private Panel _fileSectionPanel;
+        private Panel _controlSectionPanel;
+        private Panel _visualSectionPanel;
+
+        // Бэкенд компоненты (из Чата 3)
         private RouteProcessor _routeProcessor;
         private NormProcessor _normProcessor;
-        
-        // ЧАТ 2: Core компоненты ✅
         private NormStorage _normStorage;
+
+        // ЧАТ 4: Новые компоненты анализа
+        private InteractiveAnalyzer _analyzer;
+        private PlotBuilder _plotBuilder;
+
+        // Статус бар (из Чата 1)
+        private StatusStrip _statusStrip;
+        private ToolStripStatusLabel _statusLabel;
 
         #endregion
 
@@ -59,134 +53,71 @@ namespace AnalysisNorm.GUI
 
         public MainWindow()
         {
-            InitializeComponent();
-            InitializeComponents(); // ЧАТ 3: Инициализация процессоров
-            SetupUI();
-            SetupLogging();
+            InitializeComponents();
+            SetupLayout();
+            SetupMenuBar();
+            
+            Text = "Анализ норм расхода электроэнергии";
+            Width = 1400;
+            Height = 900;
+            StartPosition = FormStartPosition.CenterScreen;
 
-            Log.Information("Главное окно инициализировано [ЧАТ 3: RouteProcessor, NormProcessor, ControlSection]");
+            Log.Information("MainWindow инициализирован");
         }
 
         #endregion
 
-        #region Инициализация компонентов (ЧАТ 3) ✅
+        #region Инициализация компонентов
 
         /// <summary>
-        /// Инициализирует процессоры и core компоненты
-        /// ЧАТ 3: Новый метод
+        /// Инициализирует все компоненты
+        /// ЧАТ 4: Добавлены InteractiveAnalyzer и PlotBuilder
         /// </summary>
         private void InitializeComponents()
         {
-            // Инициализируем NormStorage
-            _normStorage = new NormStorage();
-            Log.Information("NormStorage инициализирован");
+            // GUI компоненты
+            _fileSection = new FileSection();
+            _controlSection = new ControlSection();
+            _visualizationSection = new VisualizationSection();  // ЧАТ 4: Новый
 
-            // Инициализируем процессоры
+            // Бэкенд (из Чата 3)
+            _normStorage = new NormStorage();
             _routeProcessor = new RouteProcessor();
-            _normProcessor = new NormProcessor(_normStorage);
-            Log.Information("Процессоры инициализированы");
+            _normProcessor = new NormProcessor();
+
+            // ЧАТ 4: Анализаторы
+            _analyzer = new InteractiveAnalyzer();
+            _plotBuilder = new PlotBuilder();
+            _analyzer.SetPlotBuilder(_plotBuilder);
+
+            // Статус бар
+            _statusLabel = new ToolStripStatusLabel("Готов");
+            _statusStrip = new StatusStrip();
+            _statusStrip.Items.Add(_statusLabel);
+
+            // Подключение событий
+            _fileSection.OnRoutesLoaded += FileSection_OnRoutesLoaded;
+            _fileSection.OnNormsLoaded += FileSection_OnNormsLoaded;
+            _fileSection.OnCoefficientsLoaded += FileSection_OnCoefficientsLoaded;
+            
+            _controlSection.OnAnalyzeRequested += ControlSection_OnAnalyzeRequested;  // ЧАТ 4: Реализация
+            _controlSection.OnFilterLocomotivesRequested += ControlSection_OnFilterLocomotivesRequested;
+
+            Log.Debug("Компоненты инициализированы");
         }
 
         #endregion
 
-        #region Настройка UI
+        #region Размещение компонентов
 
         /// <summary>
-        /// Настройка пользовательского интерфейса
-        /// Python: _setup_gui(), line 45
-        /// ЧАТ 2: Добавлена интеграция FileSection
-        /// ЧАТ 3: Добавлена интеграция ControlSection
+        /// Настраивает layout главного окна
+        /// Python: _setup_ui(), interface.py
+        /// ЧАТ 4: Добавлена VisualizationSection
         /// </summary>
-        private void SetupUI()
+        private void SetupLayout()
         {
-            Text = "Анализатор норм расхода электроэнергии РЖД";
-            Size = new Size(AppConfig.DefaultWindowSize.Width, 
-                           AppConfig.DefaultWindowSize.Height);
-            StartPosition = FormStartPosition.CenterScreen;
-            MinimumSize = new Size(1000, 600);
-
-            SetupMenu();
-            SetupStatusBar();
-            SetupMainLayout();
-
-            Log.Information("UI настроен");
-        }
-
-        /// <summary>
-        /// Настройка меню
-        /// Python: _setup_menu(), line 65
-        /// </summary>
-        private void SetupMenu()
-        {
-            menuStrip = new MenuStrip();
-
-            // Меню "Файл"
-            var fileMenu = new ToolStripMenuItem("Файл");
-            fileMenu.DropDownItems.Add("Экспорт в Excel", null, (s, e) =>
-            {
-                // TODO Чат 7: Реализовать экспорт
-                MessageBox.Show("Экспорт будет реализован в Чате 7", "Информация");
-            });
-            fileMenu.DropDownItems.Add(new ToolStripSeparator());
-            fileMenu.DropDownItems.Add("Выход", null, (s, e) => Application.Exit());
-
-            // Меню "Настройки"
-            var settingsMenu = new ToolStripMenuItem("Настройки");
-            settingsMenu.DropDownItems.Add("Управление нормами", null, (s, e) =>
-            {
-                // TODO Чат 7: Открыть диалог управления нормами
-                MessageBox.Show("Диалог будет реализован в Чате 7", "Информация");
-            });
-
-            // Меню "О программе"
-            var helpMenu = new ToolStripMenuItem("Справка");
-            helpMenu.DropDownItems.Add("О программе", null, (s, e) =>
-            {
-                MessageBox.Show(
-                    "Анализатор норм расхода электроэнергии РЖД\n\n" +
-                    $"Версия: {AppConfig.Version}\n" +
-                    "Портировано с Python на C# .NET 9\n\n" +
-                    "Чат 3: HTML парсинг + Управление",
-                    "О программе",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-            });
-
-            menuStrip.Items.Add(fileMenu);
-            menuStrip.Items.Add(settingsMenu);
-            menuStrip.Items.Add(helpMenu);
-
-            Controls.Add(menuStrip);
-            MainMenuStrip = menuStrip;
-        }
-
-        /// <summary>
-        /// Настройка статус бара
-        /// Python: часть _setup_gui()
-        /// </summary>
-        private void SetupStatusBar()
-        {
-            statusStrip = new StatusStrip();
-            statusLabel = new ToolStripStatusLabel
-            {
-                Text = "Готов к работе",
-                Spring = true,
-                TextAlign = ContentAlignment.MiddleLeft
-            };
-
-            statusStrip.Items.Add(statusLabel);
-            Controls.Add(statusStrip);
-        }
-
-        /// <summary>
-        /// Настройка основного layout с тремя секциями
-        /// Python: _setup_gui() создание главных панелей
-        /// ЧАТ 2: FileSection интегрирован
-        /// ЧАТ 3: ControlSection интегрирован
-        /// </summary>
-        private void SetupMainLayout()
-        {
-            // TableLayoutPanel: 3 колонки (Файлы | Управление | Визуализация)
+            // Главный контейнер с тремя секциями
             var mainLayout = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
@@ -195,150 +126,154 @@ namespace AnalysisNorm.GUI
                 Padding = new Padding(5)
             };
 
-            // Колонки: 25% | 25% | 50%
+            // Пропорции колонок: 20% | 25% | 55%
+            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20F));
             mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
-            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
-            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55F));
 
-            // ЧАТ 2: FileSection ✅
-            _fileSection = new FileSection
-            {
-                Dock = DockStyle.Fill
-            };
-            _fileSection.OnRoutesLoaded += FileSection_OnRoutesLoaded;
-            _fileSection.OnNormsLoaded += FileSection_OnNormsLoaded;
-            _fileSection.OnCoefficientsLoaded += FileSection_OnCoefficientsLoaded;
+            // Панель для файлов (слева)
+            _fileSectionPanel = CreateSectionPanel("Загрузка файлов", _fileSection);
+            mainLayout.Controls.Add(_fileSectionPanel, 0, 0);
 
-            // ЧАТ 3: ControlSection ✅
-            _controlSection = new ControlSection
-            {
-                Dock = DockStyle.Fill
-            };
-            _controlSection.OnAnalyzeRequested += ControlSection_OnAnalyzeRequested;
-            _controlSection.OnFilterLocomotivesRequested += ControlSection_OnFilterLocomotivesRequested;
+            // Панель для управления (центр)
+            _controlSectionPanel = CreateSectionPanel("Управление анализом", _controlSection);
+            mainLayout.Controls.Add(_controlSectionPanel, 1, 0);
 
-            // TODO Чат 4: VisualizationSection
-            _visualSectionPanel = CreatePlaceholderPanel(
-                "Визуализация",
-                "Будет реализована в Чате 4:\n\n" +
-                "• Интерактивный график (ScottPlot)\n" +
-                "• Экспорт графика\n" +
-                "• Информация о нормах"
-            );
-
-            mainLayout.Controls.Add(_fileSection, 0, 0);
-            mainLayout.Controls.Add(_controlSection, 1, 0);
+            // ЧАТ 4: Панель для визуализации (справа)
+            _visualSectionPanel = CreateSectionPanel("Визуализация", _visualizationSection);
             mainLayout.Controls.Add(_visualSectionPanel, 2, 0);
 
+            // Добавляем на форму
             Controls.Add(mainLayout);
+            Controls.Add(_statusStrip);
 
-            Log.Information("MainLayout настроен [3 секции: FileSection, ControlSection, Placeholder]");
+            Log.Debug("Layout настроен");
         }
 
-        private Panel CreatePlaceholderPanel(string title, string description)
+        /// <summary>
+        /// Создает панель секции с заголовком
+        /// </summary>
+        private Panel CreateSectionPanel(string title, Control content)
         {
             var panel = new Panel
             {
                 Dock = DockStyle.Fill,
                 BorderStyle = BorderStyle.FixedSingle,
-                BackColor = Color.WhiteSmoke
+                Padding = new Padding(5)
             };
 
-            var groupBox = new GroupBox
+            var titleLabel = new Label
             {
                 Text = title,
-                Dock = DockStyle.Fill,
-                Padding = new Padding(10)
+                Dock = DockStyle.Top,
+                Font = new Font("Segoe UI", 10, FontStyle.Bold),
+                Height = 30,
+                TextAlign = ContentAlignment.MiddleLeft,
+                BackColor = Color.LightGray
             };
 
-            var label = new Label
-            {
-                Text = description,
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleCenter,
-                Font = new Font(Font.FontFamily, 10),
-                ForeColor = Color.Gray
-            };
+            content.Dock = DockStyle.Fill;
 
-            groupBox.Controls.Add(label);
-            panel.Controls.Add(groupBox);
+            panel.Controls.Add(content);
+            panel.Controls.Add(titleLabel);
 
             return panel;
         }
 
         #endregion
 
-        #region Логирование
-
-        private void SetupLogging()
-        {
-            // Подписываемся на события логов Serilog для отображения в StatusBar
-            // (в реальном приложении используется Sink)
-        }
+        #region Меню
 
         /// <summary>
-        /// Обновляет текст в статус баре
-        /// Python: self.status_var.set(...)
+        /// Настраивает меню приложения
+        /// Python: _setup_menu(), interface.py
         /// </summary>
-        private void UpdateStatusBar(string message)
+        private void SetupMenuBar()
         {
-            if (InvokeRequired)
-            {
-                Invoke(new Action(() => UpdateStatusBar(message)));
-                return;
-            }
+            var menuStrip = new MenuStrip();
 
-            statusLabel.Text = message;
-            Log.Debug("StatusBar: {Message}", message);
+            // Меню "Файл"
+            var fileMenu = new ToolStripMenuItem("Файл");
+            fileMenu.DropDownItems.Add("Экспорт в Excel", null, Menu_ExportToExcel);
+            fileMenu.DropDownItems.Add(new ToolStripSeparator());
+            fileMenu.DropDownItems.Add("Выход", null, (s, e) => Close());
+
+            // Меню "Настройки"
+            var settingsMenu = new ToolStripMenuItem("Настройки");
+            settingsMenu.DropDownItems.Add("Управление нормами", null, Menu_ManageNorms);
+
+            // Меню "О программе"
+            var aboutMenu = new ToolStripMenuItem("О программе");
+            aboutMenu.Click += Menu_About;
+
+            menuStrip.Items.Add(fileMenu);
+            menuStrip.Items.Add(settingsMenu);
+            menuStrip.Items.Add(aboutMenu);
+
+            MainMenuStrip = menuStrip;
+            Controls.Add(menuStrip);
+
+            Log.Debug("Меню настроено");
         }
 
         #endregion
 
-        #region Обработчики событий FileSection (ЧАТ 2+3) ✅
+        #region Обработчики событий FileSection
 
         /// <summary>
-        /// Обработчик события загрузки HTML маршрутов
-        /// Python: _on_routes_loaded(), interface.py line 280
-        /// ЧАТ 2: Базовая реализация с логированием
-        /// ЧАТ 3: Добавлен RouteProcessor для парсинга HTML ✅
+        /// Обработчик загрузки HTML маршрутов
+        /// Python: _on_load_routes_click(), interface.py line 280
+        /// ЧАТ 4: Использует InteractiveAnalyzer
         /// </summary>
         private async void FileSection_OnRoutesLoaded(List<string> files)
         {
-            Log.Information("MainWindow: Получены файлы маршрутов: {Count}", files.Count);
-            
-            UpdateStatusBar("Обработка HTML маршрутов...");
+            Log.Information("Загрузка {Count} HTML файлов маршрутов", files.Count);
+            UpdateStatusBar("Загрузка маршрутов...");
 
             try
             {
-                // ЧАТ 3: Парсим HTML маршруты ✅
-                await Task.Run(() =>
+                // ЧАТ 4: Используем InteractiveAnalyzer вместо RouteProcessor напрямую
+                bool success = await Task.Run(() => _analyzer.LoadRoutesFromHtml(files));
+
+                if (success)
                 {
-                    var dataFrame = _routeProcessor.ProcessHtmlFiles(files);
-                    
-                    Log.Information("Маршруты обработаны: {Rows} записей", dataFrame.Rows.Count);
-                });
+                    // Обновляем список участков в ControlSection
+                    var sections = _analyzer.GetAvailableSections();
+                    _controlSection.UpdateSectionsList(sections);
 
-                // Обновляем список участков в ControlSection
-                var sections = _routeProcessor.GetSections();
-                _controlSection.UpdateSectionsList(sections);
+                    // Статистика
+                    var routesData = _analyzer.GetRoutesData();
+                    int recordsCount = routesData?.Rows.Count ?? 0;
 
-                UpdateStatusBar($"Загружено маршрутов: {_routeProcessor.RoutesDataFrame?.Rows.Count ?? 0}");
+                    UpdateStatusBar($"Загружено маршрутов: {recordsCount} записей");
 
-                MessageBox.Show(
-                    $"Загружено файлов: {files.Count}\n" +
-                    $"Обработано записей: {_routeProcessor.RoutesDataFrame?.Rows.Count ?? 0}\n" +
-                    $"Найдено участков: {sections.Count}\n\n" +
-                    $"Статистика: {_routeProcessor.ProcessingStats}",
-                    "Маршруты загружены",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
+                    MessageBox.Show(
+                        $"HTML маршруты успешно загружены\n\n" +
+                        $"Файлов обработано: {files.Count}\n" +
+                        $"Записей получено: {recordsCount}\n" +
+                        $"Участков найдено: {sections.Count}",
+                        "Загрузка завершена",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+
+                    Log.Information("Маршруты успешно загружены: {Count} записей", recordsCount);
+                }
+                else
+                {
+                    UpdateStatusBar("Ошибка загрузки маршрутов");
+                    MessageBox.Show(
+                        "Не удалось загрузить маршруты из HTML файлов",
+                        "Ошибка",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "Ошибка обработки маршрутов");
-                UpdateStatusBar("Ошибка обработки маршрутов");
+                Log.Error(ex, "Ошибка загрузки HTML маршрутов");
+                UpdateStatusBar("Ошибка загрузки");
                 MessageBox.Show(
-                    $"Ошибка обработки маршрутов:\n{ex.Message}",
+                    $"Ошибка загрузки маршрутов: {ex.Message}",
                     "Ошибка",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
@@ -346,45 +281,54 @@ namespace AnalysisNorm.GUI
         }
 
         /// <summary>
-        /// Обработчик события загрузки HTML норм
-        /// Python: _on_norms_loaded(), interface.py line 295
-        /// ЧАТ 2: Базовая реализация с логированием
-        /// ЧАТ 3: Добавлен NormProcessor для парсинга HTML ✅
+        /// Обработчик загрузки HTML норм
+        /// Python: _on_load_norms_click(), interface.py line 300
+        /// ЧАТ 4: Использует InteractiveAnalyzer
         /// </summary>
         private async void FileSection_OnNormsLoaded(List<string> files)
         {
-            Log.Information("MainWindow: Получены файлы норм: {Count}", files.Count);
-            
-            UpdateStatusBar("Обработка HTML норм...");
+            Log.Information("Загрузка {Count} HTML файлов норм", files.Count);
+            UpdateStatusBar("Загрузка норм...");
 
             try
             {
-                // ЧАТ 3: Парсим HTML нормы ✅
-                await Task.Run(() =>
+                // ЧАТ 4: Используем InteractiveAnalyzer
+                bool success = await Task.Run(() => _analyzer.LoadNormsFromHtml(files));
+
+                if (success)
                 {
-                    _normProcessor.ProcessHtmlFiles(files);
-                });
+                    // Получаем информацию о загруженных нормах
+                    var storageInfo = _analyzer.GetNormStorageInfo();
+                    int normsCount = (int)(storageInfo.GetValueOrDefault("Всего норм", 0));
 
-                // Обновляем список норм в ControlSection
-                var norms = _normProcessor.GetLoadedNorms();
-                _controlSection.UpdateNormsList(norms);
+                    UpdateStatusBar($"Загружено норм: {normsCount}");
 
-                UpdateStatusBar($"Загружено норм: {norms.Count}");
+                    MessageBox.Show(
+                        $"HTML нормы успешно загружены\n\n" +
+                        $"Файлов обработано: {files.Count}\n" +
+                        $"Норм загружено: {normsCount}",
+                        "Загрузка завершена",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
 
-                MessageBox.Show(
-                    $"Загружено файлов: {files.Count}\n" +
-                    $"Найдено норм: {norms.Count}\n\n" +
-                    $"{_normProcessor.GetStorageInfo()}",
-                    "Нормы загружены",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
+                    Log.Information("Нормы успешно загружены: {Count} норм", normsCount);
+                }
+                else
+                {
+                    UpdateStatusBar("Ошибка загрузки норм");
+                    MessageBox.Show(
+                        "Не удалось загрузить нормы из HTML файлов",
+                        "Ошибка",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "Ошибка обработки норм");
-                UpdateStatusBar("Ошибка обработки норм");
+                Log.Error(ex, "Ошибка загрузки HTML норм");
+                UpdateStatusBar("Ошибка загрузки");
                 MessageBox.Show(
-                    $"Ошибка обработки норм:\n{ex.Message}",
+                    $"Ошибка загрузки норм: {ex.Message}",
                     "Ошибка",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
@@ -392,62 +336,102 @@ namespace AnalysisNorm.GUI
         }
 
         /// <summary>
-        /// Обработчик события загрузки Excel коэффициентов
-        /// Python: _on_coefficients_loaded(), interface.py line 310
-        /// ЧАТ 2: Базовая реализация с логированием
-        /// ЧАТ 5: Добавится LocomotiveSelectorDialog
+        /// Обработчик загрузки коэффициентов
+        /// Python: _on_load_coefficients_click(), interface.py line 320
+        /// TODO Чат 5: Реализация с LocomotiveFilter
         /// </summary>
-        private void FileSection_OnCoefficientsLoaded(string filePath)
+        private void FileSection_OnCoefficientsLoaded(string file)
         {
-            Log.Information("MainWindow: Получен файл коэффициентов: {File}", 
-                Path.GetFileName(filePath));
-
-            UpdateStatusBar($"Выбран файл коэффициентов: {Path.GetFileName(filePath)}");
-
-            // TODO Чат 5: Открыть диалог селектора локомотивов
+            Log.Information("Загрузка коэффициентов из: {File}", file);
+            
+            // TODO Чат 5: Реализация с CoefficientsManager
             MessageBox.Show(
-                $"Файл коэффициентов: {Path.GetFileName(filePath)}\n\n" +
-                "Диалог выбора локомотивов будет реализован в Чате 5",
-                "Коэффициенты",
+                $"Коэффициенты загружены из:\n{file}\n\n" +
+                "Полная обработка будет реализована в Чате 5",
+                "Загрузка коэффициентов",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
+
+            UpdateStatusBar("Коэффициенты загружены");
         }
 
         #endregion
 
-        #region Обработчики событий ControlSection (ЧАТ 3) ✅
+        #region Обработчики событий ControlSection
 
         /// <summary>
         /// Обработчик запроса на анализ участка
         /// Python: _on_analyze_click(), interface.py line 330
-        /// ЧАТ 3: Базовая реализация с заглушкой
-        /// ЧАТ 4: Полная реализация с DataAnalyzer
+        /// ЧАТ 4: ПОЛНАЯ РЕАЛИЗАЦИЯ с анализатором и графиком
         /// </summary>
-        private void ControlSection_OnAnalyzeRequested(string section, bool singleSectionMode)
+        private async void ControlSection_OnAnalyzeRequested(string section, bool singleSectionMode)
         {
             Log.Information("Запрос на анализ: участок={Section}, одиночный={SingleMode}", 
                 section, singleSectionMode);
 
-            UpdateStatusBar($"Анализ участка: {section}");
+            UpdateStatusBar($"Анализ участка: {section}...");
 
-            // TODO Чат 4: Полная реализация анализа
-            // - DataAnalyzer
-            // - InteractiveAnalyzer
-            // - PlotBuilder
+            try
+            {
+                // Получаем выбранную норму (если есть)
+                string? selectedNorm = _controlSection.GetSelectedNorm();
 
-            MessageBox.Show(
-                $"Анализ участка: {section}\n" +
-                $"Одиночный режим: {singleSectionMode}\n\n" +
-                "Полный анализ будет реализован в Чате 4",
-                "Анализ",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+                // ЧАТ 4: Выполняем анализ через InteractiveAnalyzer
+                var (figure, statistics, error) = await Task.Run(() =>
+                    _analyzer.AnalyzeSection(
+                        section,
+                        selectedNorm,
+                        singleSectionMode,
+                        locomotiveFilter: null  // TODO Чат 5: Фильтр локомотивов
+                    ));
+
+                if (error != null)
+                {
+                    UpdateStatusBar($"Ошибка анализа: {error}");
+                    MessageBox.Show(error, "Ошибка анализа", 
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                // ЧАТ 4: Отображаем график
+                if (figure is ScottPlot.Plot plot)
+                {
+                    _visualizationSection.DisplayPlot(plot);
+                    Log.Information("График отображен");
+                }
+                else
+                {
+                    Log.Warning("График не создан");
+                }
+
+                // ЧАТ 4: Отображаем статистику
+                if (statistics != null)
+                {
+                    _visualizationSection.DisplayStatistics(statistics);
+                    _controlSection.UpdateStatistics(FormatStatistics(statistics));
+                    Log.Information("Статистика обновлена");
+                }
+
+                UpdateStatusBar($"Анализ завершен: {section}");
+                
+                Log.Information("Анализ участка {Section} успешно завершен", section);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Ошибка анализа участка {Section}", section);
+                UpdateStatusBar("Ошибка анализа");
+                MessageBox.Show(
+                    $"Ошибка анализа: {ex.Message}",
+                    "Ошибка",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
         }
 
         /// <summary>
         /// Обработчик запроса на фильтрацию локомотивов
         /// Python: _on_filter_locomotives_click(), interface.py line 350
-        /// ЧАТ 5: Откроет LocomotiveSelectorDialog
+        /// TODO Чат 5: Откроет LocomotiveSelectorDialog
         /// </summary>
         private void ControlSection_OnFilterLocomotivesRequested()
         {
@@ -459,6 +443,106 @@ namespace AnalysisNorm.GUI
                 "Фильтр",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
+        }
+
+        #endregion
+
+        #region Обработчики меню
+
+        /// <summary>
+        /// Экспорт в Excel
+        /// TODO Чат 7: Полная реализация
+        /// </summary>
+        private void Menu_ExportToExcel(object? sender, EventArgs e)
+        {
+            Log.Information("Запрос экспорта в Excel");
+            
+            // TODO Чат 7: Реализация экспорта
+            MessageBox.Show(
+                "Экспорт в Excel будет реализован в Чате 7",
+                "TODO",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+
+        /// <summary>
+        /// Управление нормами
+        /// TODO Чат 7: Откроет NormManagementDialog
+        /// </summary>
+        private void Menu_ManageNorms(object? sender, EventArgs e)
+        {
+            Log.Information("Запрос управления нормами");
+            
+            // TODO Чат 7: Открыть NormManagementDialog
+            MessageBox.Show(
+                "Управление нормами будет реализовано в Чате 7",
+                "TODO",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+
+        /// <summary>
+        /// О программе
+        /// </summary>
+        private void Menu_About(object? sender, EventArgs e)
+        {
+            MessageBox.Show(
+                "Анализ норм расхода электроэнергии\n\n" +
+                "Версия: 1.0 (Чат 4)\n" +
+                "Мигрировано из Python на C# .NET 9\n\n" +
+                "© 2025",
+                "О программе",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+
+        #endregion
+
+        #region Утилиты
+
+        /// <summary>
+        /// Обновляет статус бар
+        /// </summary>
+        private void UpdateStatusBar(string message)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action(() => UpdateStatusBar(message)));
+                return;
+            }
+
+            _statusLabel.Text = message;
+            Log.Debug("Статус: {Message}", message);
+        }
+
+        /// <summary>
+        /// Форматирует статистику для отображения
+        /// </summary>
+        private string FormatStatistics(Dictionary<string, object> statistics)
+        {
+            var text = "";
+
+            foreach (var (key, value) in statistics)
+            {
+                if (value is Dictionary<string, int> dict)
+                {
+                    text += $"{key}:\n";
+                    foreach (var (subKey, subValue) in dict)
+                    {
+                        text += $"  {subKey}: {subValue}\n";
+                    }
+                }
+                else if (value is double doubleValue)
+                {
+                    text += $"{key}: {doubleValue:F2}\n";
+                }
+                else
+                {
+                    text += $"{key}: {value}\n";
+                }
+            }
+
+            return text;
         }
 
         #endregion

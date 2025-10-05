@@ -21,6 +21,7 @@
     <PackageReference Include="HtmlAgilityPack" Version="1.11.54" />
     <PackageReference Include="Microsoft.Data.Analysis" Version="0.21.0" />
     <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
+    <PackageReference Include="ScottPlot" />
   </ItemGroup>
 
 </Project>
