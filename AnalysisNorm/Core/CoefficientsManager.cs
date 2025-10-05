@@ -1,3 +1,6 @@
+#nullable disable  // Фикс CS8978: отключаем nullable для этого файла (ClosedXML legacy)
+
+
 // Core/CoefficientsManager.cs
 // Миграция из: core/coefficients.py
 // Менеджер коэффициентов расхода локомотивов из Excel файлов
@@ -172,11 +175,13 @@ namespace AnalysisNorm.Core
 
             var (locomotiveCol, coefficientCol, percentCol, workCol, isPercentSource) = columnIndices.Value;
 
-            // Парсим строки данных
+            // Парсим строки данных (ФИКС строка ~179: вынесли в переменную)
+            IXLRow lastRowUsed = worksheet.LastRowUsed();  // Явный вызов
+            int lastRowNumber = lastRowUsed != null ? lastRowUsed.RowNumber() : 0;
             int count = 0;
             var records = new List<LocomotiveRecord>();
 
-            for (int row = headerRow + 1; row <= worksheet.LastRowUsed()?.RowNumber() ?? 0; row++)
+            for (int row = headerRow + 1; row <= lastRowNumber; row++)
             {
                 try
                 {
@@ -224,14 +229,20 @@ namespace AnalysisNorm.Core
         /// </summary>
         private int FindHeaderRow(IXLWorksheet worksheet)
         {
-            int maxScan = Math.Min(10, worksheet.LastRowUsed()?.RowNumber() ?? 0);
+            // ФИКС строка ~227: вынесли в переменную + явная проверка null
+            IXLRow lastRowUsed = worksheet.LastRowUsed();
+            int lastRowNumber = lastRowUsed != null ? lastRowUsed.RowNumber() : 0;
+            int maxScan = Math.Min(10, lastRowNumber);
             
             for (int row = 1; row <= maxScan; row++)
             {
                 bool foundZavod = false;
                 bool foundNomer = false;
 
-                for (int col = 1; col <= worksheet.LastColumnUsed()?.ColumnNumber() ?? 0; col++)
+                // ФИКС строка ~234: вынесли в переменную + явная проверка null
+                IXLColumn lastColUsed = worksheet.LastColumnUsed();
+                int lastColNumber = lastColUsed != null ? lastColUsed.ColumnNumber() : 0;
+                for (int col = 1; col <= lastColNumber; col++)
                 {
                     string cellValue = worksheet.Cell(row, col).GetString().ToLower();
                     
@@ -258,7 +269,15 @@ namespace AnalysisNorm.Core
             IXLWorksheet worksheet, int headerRow)
         {
             var headers = new Dictionary<int, string>();
-            int lastCol = worksheet.Row(headerRow).LastCellUsed()?.Address.ColumnNumber ?? 0;
+            
+            // ФИКС ~строка 200: вынесли в переменную + явная проверка null
+            IXLRow row = worksheet.Row(headerRow);
+            IXLCell lastCellUsed = row.LastCellUsed();
+            int lastCol = 0;
+            if (lastCellUsed != null && lastCellUsed.Address != null)
+            {
+                lastCol = lastCellUsed.Address.ColumnNumber;
+            }
 
             for (int col = 1; col <= lastCol; col++)
             {
@@ -275,11 +294,10 @@ namespace AnalysisNorm.Core
                 return null;
 
             // Ищем колонку "Коэффициент" (приоритет)
-            int? coefficientCol = headers
+            int coefficientColTemp = headers
                 .FirstOrDefault(kv => kv.Value.Contains("коэффициент") || kv.Value.Contains("коэфф"))
                 .Key;
-
-            if (coefficientCol == 0) coefficientCol = null;
+            int? coefficientCol = coefficientColTemp == 0 ? null : (int?)coefficientColTemp;
 
             // Ищем колонку "Процент" или "%"
             int? percentCol = headers
