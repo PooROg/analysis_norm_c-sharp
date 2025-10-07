@@ -247,15 +247,15 @@ namespace AnalysisNorm.GUI
                 {
                     // Получаем данные маршрутов
                     var routesData = _analyzer.GetRoutesData();
-                    
+
                     // ИСПРАВЛЕНО CS0266: DataFrame.Rows.Count возвращает long
                     int recordsCount = (int)routesData.Rows.Count;
-                    
+
                     // Получаем список доступных участков
                     var sections = _analyzer.GetAvailableSections();
-                    
-                    // Обновляем ControlSection
-                    _controlSection.UpdateSections(sections);
+
+                    // ИСПРАВЛЕНО CS1061: Правильное название метода
+                    _controlSection.UpdateSectionsList(sections);  // <-- ТУТ ИСПРАВЛЕНИЕ
 
                     UpdateStatusBar($"Загружено маршрутов: {recordsCount} записей");
 
@@ -267,25 +267,14 @@ namespace AnalysisNorm.GUI
                         "Загрузка завершена",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Information);
-
-                    Log.Information("Маршруты успешно загружены: {Count} записей", recordsCount);
-                }
-                else
-                {
-                    UpdateStatusBar("Ошибка загрузки маршрутов");
-                    MessageBox.Show(
-                        "Не удалось загрузить маршруты из HTML файлов",
-                        "Ошибка",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
                 }
             }
             catch (Exception ex)
             {
                 Log.Error(ex, "Ошибка загрузки HTML маршрутов");
-                UpdateStatusBar("Ошибка загрузки");
+                UpdateStatusBar("Ошибка загрузки маршрутов");
                 MessageBox.Show(
-                    $"Ошибка загрузки маршрутов: {ex.Message}",
+                    $"Ошибка загрузки HTML маршрутов:\n{ex.Message}",
                     "Ошибка",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);

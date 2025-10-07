@@ -130,60 +130,38 @@ namespace AnalysisNorm.GUI.Components
             {
                 _formsPlot.Reset();
 
-                // ИСПРАВЛЕНО CS0119: Сначала читаем значение, потом вызываем метод
-                // Разделяем операции чтения и записи на отдельные строки
+                // ИСПРАВЛЕНО CS1955: Plot.Add недоступен в ScottPlot 5.x
+                // ИСПРАВЛЕНО CS1061: RenderManager.RenderDetails недоступен
+                // Временное решение: устанавливаем только заголовок и оси
 
-                // Шаг 1: Читаем заголовок из входного plot
-                string? titleText = null;
-                if (plot.Title != null && plot.Title.Label != null)
+                // Копируем настройки осей из входного plot
+                if (plot.Axes?.Bottom?.Label != null)
                 {
-                    titleText = plot.Title.Label.Text;
+                    _formsPlot.Plot.Axes.Bottom.Label.Text = plot.Axes.Bottom.Label.Text;
                 }
 
-                // Шаг 2: Устанавливаем заголовок в _formsPlot через метод Title()
-                if (!string.IsNullOrEmpty(titleText))
+                if (plot.Axes?.Left?.Label != null)
                 {
-                    _formsPlot.Plot.Title(titleText);
+                    _formsPlot.Plot.Axes.Left.Label.Text = plot.Axes.Left.Label.Text;
                 }
 
-                // Копируем подписи осей - здесь прямое присваивание свойства
-                if (plot.Axes != null)
-                {
-                    // Нижняя ось (X)
-                    if (plot.Axes.Bottom?.Label != null)
-                    {
-                        string? bottomText = plot.Axes.Bottom.Label.Text;
-                        if (!string.IsNullOrEmpty(bottomText))
-                        {
-                            _formsPlot.Plot.Axes.Bottom.Label.Text = bottomText;
-                        }
-                    }
+                // Устанавливаем заголовок
+                _formsPlot.Plot.Title("График анализа норм");
 
-                    // Левая ось (Y)
-                    if (plot.Axes.Left?.Label != null)
-                    {
-                        string? leftText = plot.Axes.Left.Label.Text;
-                        if (!string.IsNullOrEmpty(leftText))
-                        {
-                            _formsPlot.Plot.Axes.Left.Label.Text = leftText;
-                        }
-                    }
-                }
-
-                // ВРЕМЕННОЕ РЕШЕНИЕ: данные графика не копируются
-                // TODO Чат 5: Переделать PlotBuilder для работы напрямую с _formsPlot.Plot
-                Log.Warning("DisplayPlot: Копирование данных требует рефакторинга PlotBuilder");
-
+                // Автомасштабирование и обновление
                 _formsPlot.Plot.Axes.AutoScale();
                 _formsPlot.Refresh();
 
-                Log.Information("График отображен (заголовок и оси)");
+                _exportButton.Enabled = true;
+
+                Log.Warning("DisplayPlot: Отображение данных графика требует рефакторинга PlotBuilder");
+                Log.Information("График отображен (заголовок и оси установлены)");
             }
             catch (Exception ex)
             {
                 Log.Error(ex, "Ошибка отображения графика");
                 MessageBox.Show(
-                    $"Ошибка отображения графика: {ex.Message}",
+                    $"Ошибка отображения графика:\n{ex.Message}",
                     "Ошибка",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
