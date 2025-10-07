@@ -25,6 +25,8 @@
     <!-- Пакеты из Чата 4 - ИСПРАВЛЕНО: ScottPlot 5.x с WinForms -->
     <PackageReference Include="ScottPlot" Version="5.0.47" />
     <PackageReference Include="ScottPlot.WinForms" Version="5.0.47" />
+    <PackageReference Include="Serilog" Version="4.3.0" />
+  
   </ItemGroup>
 
 </Project>

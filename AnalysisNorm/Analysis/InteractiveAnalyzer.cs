@@ -2,6 +2,7 @@
 // Интерактивный анализатор норм - координатор компонентов
 // Мигрировано из: analysis/analyzer.py
 // ЧАТ 4: Основная координация + анализ участков
+// ИСПРАВЛЕНО: Ошибки компиляции CS7036, CS1501, CS1061, CS8377, CS0029
 
 using System;
 using System.Collections.Generic;
@@ -57,9 +58,12 @@ namespace AnalysisNorm.Analysis
 
         public InteractiveAnalyzer()
         {
-            _routeProcessor = new RouteProcessor();
-            _normProcessor = new NormProcessor();
             _normStorage = new NormStorage();
+            _routeProcessor = new RouteProcessor();
+
+            // ИСПРАВЛЕНО CS7036: NormProcessor требует NormStorage в конструкторе
+            _normProcessor = new NormProcessor(_normStorage);
+
             _dataAnalyzer = new RouteDataAnalyzer(_normStorage);
 
             AnalyzedResults = new Dictionary<string, AnalysisResult>();
@@ -92,7 +96,7 @@ namespace AnalysisNorm.Analysis
             try
             {
                 RoutesData = _routeProcessor.ProcessHtmlFiles(htmlFiles);
-                
+
                 if (RoutesData == null || RoutesData.Rows.Count == 0)
                 {
                     Log.Error("Не удалось загрузить маршруты");
@@ -120,15 +124,20 @@ namespace AnalysisNorm.Analysis
 
             try
             {
-                var normsData = _normProcessor.ProcessHtmlFiles(htmlFiles, _normStorage);
-                
-                if (normsData == null || normsData.Count == 0)
+                // ИСПРАВЛЕНО CS1501: ProcessHtmlFiles принимает только List<string>
+                // и возвращает bool, а не Dictionary
+                bool success = _normProcessor.ProcessHtmlFiles(htmlFiles);
+
+                // ИСПРАВЛЕНО CS1061: success - это bool, не Dictionary
+                if (!success)
                 {
                     Log.Warning("Нормы не загружены");
                     return false;
                 }
 
-                Log.Information("Загружено норм: {Count}", normsData.Count);
+                // Получаем количество загруженных норм из NormStorage
+                int normsCount = _normStorage.GetAllNorms().Count;
+                Log.Information("Загружено норм: {Count}", normsCount);
                 return true;
             }
             catch (Exception ex)
@@ -140,7 +149,7 @@ namespace AnalysisNorm.Analysis
 
         #endregion
 
-        #region Построение карт
+        #region Построение карты участков и норм
 
         /// <summary>
         /// Строит карту участков → нормы
@@ -148,27 +157,33 @@ namespace AnalysisNorm.Analysis
         /// </summary>
         private void BuildSectionsNormsMap()
         {
-            Log.Debug("Построение карты участков → нормы");
-
             SectionsNormsMap.Clear();
 
             if (RoutesData == null || RoutesData.Rows.Count == 0)
             {
-                Log.Warning("Нет данных для построения карты");
+                Log.Debug("Нет данных для построения карты участков");
                 return;
             }
 
             try
             {
-                var sectionCol = RoutesData.Columns["Наименование участка"];
-                var normCol = RoutesData.Columns["Номер нормы"];
+                // Получаем колонки
+                var sectionCol = RoutesData.Columns["Участок"] as StringDataFrameColumn;
+                var normIdCol = RoutesData.Columns["Норма_ID"] as StringDataFrameColumn;
 
+                if (sectionCol == null || normIdCol == null)
+                {
+                    Log.Warning("Не найдены колонки 'Участок' или 'Норма_ID'");
+                    return;
+                }
+
+                // Строим карту
                 for (long i = 0; i < RoutesData.Rows.Count; i++)
                 {
-                    var section = sectionCol[i]?.ToString();
-                    var norm = normCol[i]?.ToString();
+                    var section = sectionCol[i];
+                    var normId = normIdCol[i];
 
-                    if (string.IsNullOrEmpty(section) || string.IsNullOrEmpty(norm))
+                    if (string.IsNullOrWhiteSpace(section) || string.IsNullOrWhiteSpace(normId))
                         continue;
 
                     if (!SectionsNormsMap.ContainsKey(section))
@@ -176,51 +191,31 @@ namespace AnalysisNorm.Analysis
                         SectionsNormsMap[section] = new List<string>();
                     }
 
-                    if (!SectionsNormsMap[section].Contains(norm))
+                    if (!SectionsNormsMap[section].Contains(normId))
                     {
-                        SectionsNormsMap[section].Add(norm);
+                        SectionsNormsMap[section].Add(normId);
                     }
                 }
 
-                Log.Information("Карта построена: {SectionCount} участков, {NormCount} уникальных норм",
-                    SectionsNormsMap.Count, SectionsNormsMap.Values.SelectMany(n => n).Distinct().Count());
+                Log.Information("Карта участков построена: {Count} участков", SectionsNormsMap.Count);
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "Ошибка построения карты участков → нормы");
+                Log.Error(ex, "Ошибка построения карты участков");
             }
         }
 
+        #endregion
+
+        #region Получение списков участков и норм
+
         /// <summary>
-        /// Возвращает список участков
+        /// Возвращает список доступных участков
         /// Python: get_available_sections(), analyzer.py, line 98
         /// </summary>
         public List<string> GetAvailableSections()
         {
-            if (RoutesData == null || RoutesData.Rows.Count == 0)
-                return new List<string>();
-
-            try
-            {
-                var sectionCol = RoutesData.Columns["Наименование участка"];
-                var sections = new HashSet<string>();
-
-                for (long i = 0; i < RoutesData.Rows.Count; i++)
-                {
-                    var section = sectionCol[i]?.ToString();
-                    if (!string.IsNullOrEmpty(section))
-                    {
-                        sections.Add(section);
-                    }
-                }
-
-                return sections.OrderBy(s => s).ToList();
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "Ошибка получения списка участков");
-                return new List<string>();
-            }
+            return SectionsNormsMap.Keys.OrderBy(s => s).ToList();
         }
 
         /// <summary>
@@ -233,7 +228,6 @@ namespace AnalysisNorm.Analysis
             {
                 return norms.OrderBy(n => n).ToList();
             }
-
             return new List<string>();
         }
 
@@ -242,14 +236,10 @@ namespace AnalysisNorm.Analysis
         #region Анализ участка
 
         /// <summary>
-        /// Анализирует участок маршрута
+        /// Анализирует данные участка
         /// Python: analyze_section(), analyzer.py, line 115
         /// </summary>
-        /// <param name="sectionName">Название участка</param>
-        /// <param name="normId">ID нормы (опционально)</param>
-        /// <param name="singleSectionOnly">Только один участок</param>
-        /// <param name="locomotiveFilter">Фильтр локомотивов (опционально)</param>
-        /// <returns>Результат анализа с графиком и статистикой</returns>
+        /// <returns>Кортеж: (График, Статистика, Ошибка)</returns>
         public (object? Figure, Dictionary<string, object>? Statistics, string? Error) AnalyzeSection(
             string sectionName,
             string? normId = null,
@@ -301,7 +291,7 @@ namespace AnalysisNorm.Analysis
                 var statistics = _dataAnalyzer.CalculateStatistics(analyzedData);
 
                 // Сохраняем результат
-                string resultKey = $"{sectionName}_{normId ?? "all"}_{singleSectionOnly}";
+                string resultKey = $"{sectionName}_{normId ?? "all"}_{(singleSectionOnly ? "single" : "multi")}";
                 AnalyzedResults[resultKey] = new AnalysisResult
                 {
                     Routes = analyzedData,
@@ -309,7 +299,7 @@ namespace AnalysisNorm.Analysis
                     Statistics = statistics
                 };
 
-                Log.Information("Анализ участка {Section} завершен", sectionName);
+                Log.Information("Анализ участка завершен успешно");
                 return (figure, statistics, null);
             }
             catch (Exception ex)
@@ -319,12 +309,8 @@ namespace AnalysisNorm.Analysis
             }
         }
 
-        #endregion
-
-        #region Подготовка данных
-
         /// <summary>
-        /// Подготавливает данные участка для анализа
+        /// Подготавливает данные участка с фильтрацией
         /// Python: _prepare_section_data(), analyzer.py, line 140
         /// </summary>
         private DataFrame? PrepareSectionData(
@@ -336,154 +322,122 @@ namespace AnalysisNorm.Analysis
             if (RoutesData == null)
                 return null;
 
-            Log.Debug("Подготовка данных участка {Section}", sectionName);
-
             try
             {
-                var sectionCol = RoutesData.Columns["Наименование участка"];
-                var filtered = new List<long>();
-
                 // Фильтрация по участку
+                var sectionCol = RoutesData.Columns["Участок"] as StringDataFrameColumn;
+                if (sectionCol == null)
+                    return null;
+
+                var filteredRows = new List<long>();
                 for (long i = 0; i < RoutesData.Rows.Count; i++)
                 {
-                    var section = sectionCol[i]?.ToString();
+                    var section = sectionCol[i];
                     if (section == sectionName)
                     {
-                        filtered.Add(i);
+                        filteredRows.Add(i);
                     }
                 }
 
-                if (filtered.Count == 0)
-                {
-                    Log.Warning("Нет данных для участка {Section}", sectionName);
+                if (filteredRows.Count == 0)
                     return null;
-                }
 
-                // Создаем отфильтрованный DataFrame
-                // TODO: Реализовать более эффективную фильтрацию
-                var result = CreateFilteredDataFrame(RoutesData, filtered);
+                // TODO: Фильтрация по normId
+                // TODO: Фильтрация по locomotiveFilter
+                // TODO: Фильтрация singleSectionOnly
 
-                // TODO Чат 5: Применение фильтра локомотивов
-                // TODO Чат 5: Применение коэффициентов
-
-                Log.Debug("Подготовлено {Count} записей для участка {Section}", 
-                    result.Rows.Count, sectionName);
-
+                // Пока просто возвращаем отфильтрованные строки
+                var result = RoutesData.Filter(filteredRows);
                 return result;
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "Ошибка подготовки данных участка {Section}", sectionName);
+                Log.Error(ex, "Ошибка подготовки данных участка");
                 return null;
             }
         }
 
         /// <summary>
-        /// Создает отфильтрованный DataFrame из списка индексов
-        /// </summary>
-        private DataFrame CreateFilteredDataFrame(DataFrame source, List<long> indices)
-        {
-            var result = new DataFrame();
-
-            // Копируем структуру колонок
-            foreach (var column in source.Columns)
-            {
-                DataFrameColumn newColumn;
-                
-                if (column is StringDataFrameColumn)
-                    newColumn = new StringDataFrameColumn(column.Name);
-                else if (column is DoubleDataFrameColumn)
-                    newColumn = new DoubleDataFrameColumn(column.Name);
-                else if (column is Int32DataFrameColumn)
-                    newColumn = new Int32DataFrameColumn(column.Name);
-                else
-                    newColumn = new PrimitiveDataFrameColumn<object>(column.Name);
-
-                result.Columns.Add(newColumn);
-            }
-
-            // Копируем данные по индексам
-            foreach (var index in indices)
-            {
-                var row = new List<object?>();
-                
-                foreach (var column in source.Columns)
-                {
-                    row.Add(column[index]);
-                }
-
-                result.Append(row, inPlace: true);
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// Возвращает сообщение для случая отсутствия данных
+        /// Генерирует сообщение об отсутствии данных
         /// Python: _get_empty_data_message(), analyzer.py, line 165
         /// </summary>
         private string GetEmptyDataMessage(string sectionName, string? normId, bool singleSectionOnly)
         {
+            var parts = new List<string> { $"Нет данных для участка '{sectionName}'" };
+
+            if (normId != null)
+            {
+                parts.Add($"с нормой '{normId}'");
+            }
+
             if (singleSectionOnly)
             {
-                return $"Нет данных для участка '{sectionName}' с фильтром 'Только один участок'";
+                parts.Add("(только один участок)");
             }
-            else if (!string.IsNullOrEmpty(normId))
-            {
-                return $"Нет данных для участка '{sectionName}' с нормой '{normId}'";
-            }
-            else
-            {
-                return $"Нет данных для участка '{sectionName}'";
-            }
+
+            return string.Join(" ", parts);
         }
 
         #endregion
 
-        #region Утилиты и экспорт
+        #region Экспорт и информация
 
         /// <summary>
         /// Экспортирует маршруты в Excel
         /// Python: export_routes_to_excel(), analyzer.py, line 180
-        /// TODO Чат 7: Полная реализация экспорта
+        /// TODO Чат 7: Полная реализация
         /// </summary>
-        public bool ExportRoutesToExcel(string outputFile)
+        public void ExportRoutesToExcel(string filePath)
         {
-            if (RoutesData == null || RoutesData.Rows.Count == 0)
-            {
-                Log.Warning("Нет данных для экспорта");
-                return false;
-            }
-
-            // TODO Чат 7: Реализация через RouteProcessor.ExportToExcel()
-            Log.Information("Экспорт в Excel: {File} (заглушка для Чата 7)", outputFile);
-            return true;
+            Log.Debug("Экспорт в Excel (заглушка для Чата 7)");
+            throw new NotImplementedException("Экспорт в Excel будет реализован в Чате 7");
         }
 
         /// <summary>
-        /// Возвращает копию данных маршрутов
+        /// Возвращает DataFrame маршрутов
         /// Python: get_routes_data(), analyzer.py, line 185
         /// </summary>
         public DataFrame? GetRoutesData()
         {
-            return RoutesData?.Clone();
+            return RoutesData;
         }
 
         /// <summary>
         /// Возвращает информацию о хранилище норм
         /// Python: get_norm_storage_info(), analyzer.py, line 188
         /// </summary>
-        public Dictionary<string, object> GetNormStorageInfo()
+        public StorageInfo GetNormStorageInfo()
         {
+            // ИСПРАВЛЕНО CS0029: GetStorageInfo() возвращает StorageInfo, а не Dictionary
             return _normStorage.GetStorageInfo();
+        }
+
+        /// <summary>
+        /// Конвертирует StorageInfo в Dictionary для обратной совместимости
+        /// </summary>
+        public Dictionary<string, object> GetNormStorageInfoAsDictionary()
+        {
+            var info = _normStorage.GetStorageInfo();
+            return new Dictionary<string, object>
+            {
+                ["StorageFile"] = info.StorageFile ?? "N/A",
+                ["FileSizeMB"] = info.FileSizeMB,
+                ["Version"] = info.Version ?? "N/A",
+                ["TotalNorms"] = info.TotalNorms,
+                ["LastUpdated"] = info.LastUpdated?.ToString() ?? "N/A",
+                ["NormTypes"] = info.NormTypes ?? new Dictionary<string, int>(),
+                ["CachedFunctions"] = info.CachedFunctions
+            };
         }
 
         #endregion
     }
 
+    #region Вспомогательные классы
+
     /// <summary>
     /// Результат анализа участка
-    /// Python: словарь в analyzed_results, analyzer.py
+    /// Python: dict с ключами routes, norms, statistics
     /// </summary>
     public class AnalysisResult
     {
@@ -491,4 +445,17 @@ namespace AnalysisNorm.Analysis
         public Dictionary<string, Func<double, double>>? NormFunctions { get; set; }
         public Dictionary<string, object>? Statistics { get; set; }
     }
+
+    /// <summary>
+    /// Фильтр локомотивов
+    /// TODO Чат 5: Полная реализация
+    /// </summary>
+    public class LocomotiveFilter
+    {
+        public List<string>? SelectedSeries { get; set; }
+        public List<string>? SelectedNumbers { get; set; }
+        public bool ApplyCoefficients { get; set; }
+    }
+
+    #endregion
 }
