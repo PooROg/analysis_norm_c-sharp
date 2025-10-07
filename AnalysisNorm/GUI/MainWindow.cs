@@ -240,18 +240,22 @@ namespace AnalysisNorm.GUI
 
             try
             {
-                // ЧАТ 4: Используем InteractiveAnalyzer вместо RouteProcessor напрямую
+                // ЧАТ 4: Используем InteractiveAnalyzer
                 bool success = await Task.Run(() => _analyzer.LoadRoutesFromHtml(files));
 
                 if (success)
                 {
-                    // Обновляем список участков в ControlSection
-                    var sections = _analyzer.GetAvailableSections();
-                    _controlSection.UpdateSectionsList(sections);
-
-                    // Статистика
+                    // Получаем данные маршрутов
                     var routesData = _analyzer.GetRoutesData();
-                    int recordsCount = routesData?.Rows.Count ?? 0;
+                    
+                    // ИСПРАВЛЕНО CS0266: DataFrame.Rows.Count возвращает long
+                    int recordsCount = (int)routesData.Rows.Count;
+                    
+                    // Получаем список доступных участков
+                    var sections = _analyzer.GetAvailableSections();
+                    
+                    // Обновляем ControlSection
+                    _controlSection.UpdateSections(sections);
 
                     UpdateStatusBar($"Загружено маршрутов: {recordsCount} записей");
 
@@ -305,9 +309,10 @@ namespace AnalysisNorm.GUI
 
                 if (success)
                 {
+                    // ИСПРАВЛЕНО CS1929: StorageInfo это класс, а не Dictionary
                     // Получаем информацию о загруженных нормах
                     var storageInfo = _analyzer.GetNormStorageInfo();
-                    int normsCount = (int)(storageInfo.GetValueOrDefault("Всего норм", 0));
+                    int normsCount = storageInfo.TotalNorms;  // Прямое обращение к свойству
 
                     UpdateStatusBar($"Загружено норм: {normsCount}");
 

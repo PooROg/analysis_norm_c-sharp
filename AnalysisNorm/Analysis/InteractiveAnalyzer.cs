@@ -2,7 +2,7 @@
 // Интерактивный анализатор норм - координатор компонентов
 // Мигрировано из: analysis/analyzer.py
 // ЧАТ 4: Основная координация + анализ участков
-// ИСПРАВЛЕНО: Ошибки компиляции CS7036, CS1501, CS1061, CS8377, CS0029
+// ИСПРАВЛЕНО: CS1503 - фильтрация DataFrame
 
 using System;
 using System.Collections.Generic;
@@ -32,7 +32,7 @@ namespace AnalysisNorm.Analysis
         private readonly NormProcessor _normProcessor;
         private readonly NormStorage _normStorage;
         private readonly RouteDataAnalyzer _dataAnalyzer;
-        private PlotBuilder? _plotBuilder;  // Будет установлен после создания
+        private PlotBuilder? _plotBuilder;
 
         /// <summary>
         /// Основной DataFrame с маршрутами
@@ -60,10 +60,7 @@ namespace AnalysisNorm.Analysis
         {
             _normStorage = new NormStorage();
             _routeProcessor = new RouteProcessor();
-
-            // ИСПРАВЛЕНО CS7036: NormProcessor требует NormStorage в конструкторе
             _normProcessor = new NormProcessor(_normStorage);
-
             _dataAnalyzer = new RouteDataAnalyzer(_normStorage);
 
             AnalyzedResults = new Dictionary<string, AnalysisResult>();
@@ -124,18 +121,14 @@ namespace AnalysisNorm.Analysis
 
             try
             {
-                // ИСПРАВЛЕНО CS1501: ProcessHtmlFiles принимает только List<string>
-                // и возвращает bool, а не Dictionary
                 bool success = _normProcessor.ProcessHtmlFiles(htmlFiles);
 
-                // ИСПРАВЛЕНО CS1061: success - это bool, не Dictionary
                 if (!success)
                 {
                     Log.Warning("Нормы не загружены");
                     return false;
                 }
 
-                // Получаем количество загруженных норм из NormStorage
                 int normsCount = _normStorage.GetAllNorms().Count;
                 Log.Information("Загружено норм: {Count}", normsCount);
                 return true;
@@ -167,7 +160,6 @@ namespace AnalysisNorm.Analysis
 
             try
             {
-                // Получаем колонки
                 var sectionCol = RoutesData.Columns["Участок"] as StringDataFrameColumn;
                 var normIdCol = RoutesData.Columns["Норма_ID"] as StringDataFrameColumn;
 
@@ -177,7 +169,6 @@ namespace AnalysisNorm.Analysis
                     return;
                 }
 
-                // Строим карту
                 for (long i = 0; i < RoutesData.Rows.Count; i++)
                 {
                     var section = sectionCol[i];
@@ -239,7 +230,6 @@ namespace AnalysisNorm.Analysis
         /// Анализирует данные участка
         /// Python: analyze_section(), analyzer.py, line 115
         /// </summary>
-        /// <returns>Кортеж: (График, Статистика, Ошибка)</returns>
         public (object? Figure, Dictionary<string, object>? Statistics, string? Error) AnalyzeSection(
             string sectionName,
             string? normId = null,
@@ -256,7 +246,6 @@ namespace AnalysisNorm.Analysis
 
             try
             {
-                // Фильтрация данных
                 var sectionRoutes = PrepareSectionData(
                     sectionName, normId, singleSectionOnly, locomotiveFilter);
 
@@ -266,7 +255,6 @@ namespace AnalysisNorm.Analysis
                     return (null, null, message);
                 }
 
-                // Анализ данных
                 var (analyzedData, normFunctions) = _dataAnalyzer.AnalyzeSectionData(
                     sectionName, sectionRoutes, normId);
 
@@ -275,7 +263,6 @@ namespace AnalysisNorm.Analysis
                     return (null, null, $"Не удалось проанализировать участок {sectionName}");
                 }
 
-                // Построение графика
                 object? figure = null;
                 if (_plotBuilder != null)
                 {
@@ -287,10 +274,8 @@ namespace AnalysisNorm.Analysis
                     Log.Warning("PlotBuilder не установлен, график не будет построен");
                 }
 
-                // Статистика
                 var statistics = _dataAnalyzer.CalculateStatistics(analyzedData);
 
-                // Сохраняем результат
                 string resultKey = $"{sectionName}_{normId ?? "all"}_{(singleSectionOnly ? "single" : "multi")}";
                 AnalyzedResults[resultKey] = new AnalysisResult
                 {
@@ -312,6 +297,7 @@ namespace AnalysisNorm.Analysis
         /// <summary>
         /// Подготавливает данные участка с фильтрацией
         /// Python: _prepare_section_data(), analyzer.py, line 140
+        /// ИСПРАВЛЕНО CS1503: DataFrame.Filter требует PrimitiveDataFrameColumn<bool>
         /// </summary>
         private DataFrame? PrepareSectionData(
             string sectionName,
@@ -329,25 +315,25 @@ namespace AnalysisNorm.Analysis
                 if (sectionCol == null)
                     return null;
 
-                var filteredRows = new List<long>();
+                // ИСПРАВЛЕНО CS1503: Создаем булеву колонку вместо List<long>
+                var filterColumn = new PrimitiveDataFrameColumn<bool>("SectionFilter", RoutesData.Rows.Count);
+
                 for (long i = 0; i < RoutesData.Rows.Count; i++)
                 {
                     var section = sectionCol[i];
-                    if (section == sectionName)
-                    {
-                        filteredRows.Add(i);
-                    }
+                    filterColumn[i] = (section == sectionName);
                 }
 
-                if (filteredRows.Count == 0)
+                // Применяем фильтр
+                var result = RoutesData.Filter(filterColumn);
+
+                if (result == null || result.Rows.Count == 0)
                     return null;
 
                 // TODO: Фильтрация по normId
                 // TODO: Фильтрация по locomotiveFilter
                 // TODO: Фильтрация singleSectionOnly
 
-                // Пока просто возвращаем отфильтрованные строки
-                var result = RoutesData.Filter(filteredRows);
                 return result;
             }
             catch (Exception ex)
@@ -408,7 +394,6 @@ namespace AnalysisNorm.Analysis
         /// </summary>
         public StorageInfo GetNormStorageInfo()
         {
-            // ИСПРАВЛЕНО CS0029: GetStorageInfo() возвращает StorageInfo, а не Dictionary
             return _normStorage.GetStorageInfo();
         }
 

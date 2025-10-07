@@ -11,6 +11,9 @@ using Microsoft.Data.Analysis;
 using ScottPlot;
 using Serilog;
 
+using WinColor = System.Drawing.Color;    // Псевдоним для Windows Forms Color
+using PlotColor = ScottPlot.Color;        // Псевдоним для ScottPlot Color
+
 namespace AnalysisNorm.Analysis
 {
     /// <summary>
@@ -28,9 +31,9 @@ namespace AnalysisNorm.Analysis
         #region Константы
 
         // Цвета статусов (как в Python)
-        private static readonly Color ColorEconomy = Color.FromArgb(0, 128, 0);      // Зеленый
-        private static readonly Color ColorNormal = Color.FromArgb(255, 165, 0);     // Оранжевый  
-        private static readonly Color ColorOverrun = Color.FromArgb(255, 0, 0);      // Красный
+        private static readonly PlotColor ColorEconomy = PlotColor.FromColor(WinColor.FromArgb(0, 128, 0));      // Зеленый
+        private static readonly PlotColor ColorNormal = PlotColor.FromColor(WinColor.FromArgb(255, 165, 0));     // Оранжевый  
+        private static readonly PlotColor ColorOverrun = PlotColor.FromColor(WinColor.FromArgb(255, 0, 0));      // Красный
 
         // Размеры маркеров
         private const float MarkerSize = 8f;
@@ -149,7 +152,12 @@ namespace AnalysisNorm.Analysis
             }
 
             // Цвета для разных норм
-            Color[] colors = { Color.Blue, Color.Purple, Color.Magenta, Color.Cyan };
+            PlotColor[] colors = {
+                PlotColor.FromColor(WinColor.Blue),
+                PlotColor.FromColor(WinColor.Purple),
+                PlotColor.FromColor(WinColor.Magenta),
+                PlotColor.FromColor(WinColor.Cyan)
+            };
             int colorIndex = 0;
 
             // Для каждой нормы
@@ -172,7 +180,7 @@ namespace AnalysisNorm.Analysis
                 }
 
                 // ИСПРАВЛЕНО: ScottPlot 5.x API
-                Color lineColor = colors[colorIndex % colors.Length];
+                PlotColor lineColor = colors[colorIndex % colors.Length];
                 var scatter = plot.Add.Scatter(osesArray, normValues);
                 scatter.Color = lineColor;
                 scatter.LineWidth = LineWidth;
@@ -212,7 +220,7 @@ namespace AnalysisNorm.Analysis
                 double[] yData = points.Select(p => p.Rashod).ToArray();
 
                 // Определяем цвет по статусу
-                Color color = GetStatusColor(status);
+                PlotColor color = GetStatusColor(status);
 
                 // ИСПРАВЛЕНО: ScottPlot 5.x API
                 var scatter = plot.Add.Scatter(xData, yData);
@@ -286,15 +294,17 @@ namespace AnalysisNorm.Analysis
         /// Возвращает цвет для статуса
         /// Python: STATUS_COLORS, visualization.py, line 30
         /// </summary>
-        private Color GetStatusColor(string status)
+        private PlotColor GetStatusColor(string status)
         {
             return status switch
             {
                 "Экономия" => ColorEconomy,
+                "Норма" => ColorNormal,
                 "Перерасход" => ColorOverrun,
-                _ => ColorNormal
+                _ => PlotColor.FromColor(WinColor.Gray)
             };
         }
+
 
         #endregion
 
